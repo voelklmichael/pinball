@@ -43,6 +43,7 @@ Every wall has `type`, its geometry, and optionally:
 
 | Field | Default | Meaning |
 |---|---|---|
+| `id` | none | Name the rules refer to it by, e.g. `"left_ramp"`. Must be unique in the table |
 | `restitution` | `0.35` | Bounce, 0 to 1 |
 | `friction` | `0.075` | Friction along the wall |
 
@@ -52,11 +53,23 @@ Every wall has `type`, its geometry, and optionally:
 | `arc` | `center`, `radius` (a number, or `[rx, ry]` for an ellipse), `start_deg`, `end_deg`, optional `rotation_deg` (turns the ellipse). Goes counter-clockwise when `end_deg > start_deg`, clockwise otherwise. A sweep of 360° makes a closed circle |
 | `bezier` | `points`: start, control, control, end, then two controls and an end for each further segment (4, 7, 10, … points) |
 | `polyline` | `points`, optional `closed` (default `false`) |
+| `path` | `start`, `segments`, optional `closed` (adds a line back to `start`). Each segment starts where the previous one ended, so there are no gaps |
+
+**`path` segments**
+
+| Segment | Meaning |
+|---|---|
+| `{ "line": [x, y] }` | Straight line to this point |
+| `{ "arc": { "center": [x, y], "sweep_deg": a } }` | Circular arc around `center`, from the current point, turning `a` degrees (counter-clockwise if positive) |
+| `{ "bezier": [[c1x, c1y], [c2x, c2y], [x, y]] }` | Cubic Bézier: two control points, then the end point |
+
+Example: the outer wall of [simple.json](simple.json) is one path, from the left flipper guide up, around the top arch and down to the right flipper guide.
 
 ## Flipper
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
+| `id` | no | | Name the rules refer to it by |
 | `pivot` | yes | | Where the flipper turns |
 | `rest_deg` | yes | | Angle when the key is released |
 | `up_deg` | yes | | Angle when the key is held |
@@ -64,6 +77,6 @@ Every wall has `type`, its geometry, and optionally:
 | `speed_deg_per_s` | no | `3150` | How fast it turns (a 60° stroke in about 19 ms) |
 | `restitution` | no | `0.25` | |
 | `friction` | no | `0.35` | |
-| `shape` | yes | | List of curves (same types as walls, without `restitution`/`friction`), drawn with the pivot at `[0, 0]` and pointing right (+x). The flipper is the convex hull of the outline |
+| `shape` | yes | | List of curves (same types as walls, without `id`/`restitution`/`friction`), drawn with the pivot at `[0, 0]` and pointing right (+x). The flipper is the convex hull of the outline |
 
 A right flipper uses the same shape as a left one, turned around: for example `rest_deg: 210` and `up_deg: 150` points it down-left at rest. See [simple.json](simple.json).

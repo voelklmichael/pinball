@@ -164,6 +164,7 @@ const SIMPLE: &str = include_str!("../../tables/simple.json");
 fn simple_table_loads_and_plays() {
     let layout = crate::tablefile::parse(SIMPLE).unwrap();
     assert_eq!(layout.flippers.len(), 2);
+    assert_eq!(layout.walls[0].id.as_deref(), Some("outer_wall"));
     let mut table = Table::new(layout);
     table.serve_ball();
     run(&mut table, 0.2);
@@ -218,4 +219,8 @@ fn table_file_errors_name_the_problem() {
     assert!(e.contains("elements[0] (flipper): shape[0] (line)"), "{e}");
     let e = err(&base(r#"{"type": "arc", "center": [0, 0], "radius": [0.1, 0], "start_deg": 0, "end_deg": 90}"#));
     assert!(e.contains("radius must be > 0"), "{e}");
+    let e = err(&base(
+        r#"{"type": "line", "id": "a", "from": [0, 0], "to": [0, 1]}, {"type": "line", "id": "a", "from": [1, 0], "to": [1, 1]}"#,
+    ));
+    assert!(e.contains(r#"elements[1] (line): id "a" is used twice"#), "{e}");
 }

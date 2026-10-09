@@ -58,6 +58,9 @@ pub enum Sw {
 }
 
 pub struct Wall {
+    /// Name the rules refer to it by.
+    #[allow(dead_code)] // read by the rules engine, which is not built yet
+    pub id: Option<String>,
     pub layer: Layer,
     pub pts: Vec<Vector>,
     pub closed: bool,
@@ -170,6 +173,8 @@ pub enum Button {
 
 #[derive(Clone)]
 pub struct FlipperDef {
+    #[allow(dead_code)] // read by the rules engine, which is not built yet
+    pub id: Option<String>,
     pub pivot: Vector,
     /// Outline in local coordinates: pivot at the origin, pointing along +x.
     /// The flipper body is the convex hull of these points.
@@ -317,7 +322,7 @@ pub fn bavaria() -> Layout {
     let mut wall = |layer, pts: Vec<Vector>, closed| {
         // Ramp rails absorb hits; playfield walls are livelier.
         let restitution = if layer == Playfield { 0.35 } else { 0.1 };
-        walls.push(Wall { layer, pts, closed, restitution, friction: 0.075 })
+        walls.push(Wall { id: None, layer, pts, closed, restitution, friction: 0.075 })
     };
 
     // Cabinet: left side, top arch, right side down the plunger lane.
@@ -497,7 +502,8 @@ pub fn bavaria() -> Layout {
     let rest: f32 = -0.52;
     // Tip edges ~35mm apart, so a dead ball drains between the flippers.
     let pivot_dx = 0.0235 + flipper_len * rest.cos();
-    let flipper = |pivot, rest: f32, up: f32, outline, layer, button| FlipperDef {
+    let flipper = |id: &str, pivot, rest: f32, up: f32, outline, layer, button| FlipperDef {
+        id: Some(id.into()),
         pivot,
         outline,
         rest,
@@ -541,10 +547,10 @@ pub fn bavaria() -> Layout {
             Gate { a: v(LANE_X, 0.53), b: v(mx(0.06), 0.48), pass: Vector::Y, layer: pf },
         ],
         flippers: vec![
-            flipper(v(left_x, 0.15), rest, -rest, main_outline.clone(), pf, Button::Left),
+            flipper("left_flipper", v(left_x, 0.15), rest, -rest, main_outline.clone(), pf, Button::Left),
             // Mirrored: points down-left at rest (180° + 30°).
-            flipper(v(right_x, 0.15), pi - rest, pi + rest, main_outline, pf, Button::Right),
-            flipper(v(0.31, 0.865), -0.5, 0.5, tapered_outline(0.05, 0.009, 0.005), Upper, Button::Left),
+            flipper("right_flipper", v(right_x, 0.15), pi - rest, pi + rest, main_outline, pf, Button::Right),
+            flipper("upper_flipper", v(0.31, 0.865), -0.5, 0.5, tapered_outline(0.05, 0.009, 0.005), Upper, Button::Left),
         ],
         holes: vec![Hole { center: v(0.169, 0.672), radius: 0.012, eject: v(0.05, -0.6), sw: Sw::Scoop }],
         upper_outline,

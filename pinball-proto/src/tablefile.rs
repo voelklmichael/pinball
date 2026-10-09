@@ -80,10 +80,11 @@ pub enum Element {
     Arc(Arc),
     Bezier(Bezier),
     Polyline(Polyline),
+    Path(Path),
     Flipper(Flipper),
 }
 
-/// The curves a flipper outline is made of: walls without physics settings.
+/// The curves a flipper outline is made of: walls without id or physics settings.
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Curve {
@@ -91,11 +92,14 @@ pub enum Curve {
     Arc(Arc),
     Bezier(Bezier),
     Polyline(Polyline),
+    Path(Path),
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Line {
+    /// Name the rules refer to this element by; unique within the table.
+    pub id: Option<String>,
     pub from: P,
     pub to: P,
     pub restitution: Option<f32>,
@@ -107,6 +111,8 @@ pub struct Line {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Arc {
+    /// Name the rules refer to this element by; unique within the table.
+    pub id: Option<String>,
     pub center: P,
     pub radius: Radius,
     pub start_deg: f32,
@@ -131,6 +137,8 @@ pub enum Radius {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Bezier {
+    /// Name the rules refer to this element by; unique within the table.
+    pub id: Option<String>,
     pub points: Vec<P>,
     pub restitution: Option<f32>,
     pub friction: Option<f32>,
@@ -139,6 +147,8 @@ pub struct Bezier {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Polyline {
+    /// Name the rules refer to this element by; unique within the table.
+    pub id: Option<String>,
     pub points: Vec<P>,
     #[serde(default)]
     pub closed: bool,
@@ -146,9 +156,39 @@ pub struct Polyline {
     pub friction: Option<f32>,
 }
 
+/// Connected wall made of segments, each starting where the previous one ended,
+/// so there can be no gaps between them.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Path {
+    /// Name the rules refer to this element by; unique within the table.
+    pub id: Option<String>,
+    pub start: P,
+    pub segments: Vec<Segment>,
+    /// Adds a straight line back to `start` if the path doesn't end there.
+    #[serde(default)]
+    pub closed: bool,
+    pub restitution: Option<f32>,
+    pub friction: Option<f32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum Segment {
+    /// Straight line to this point.
+    Line(P),
+    /// Circular arc around `center`, starting at the current point and turning
+    /// `sweep_deg` (counter-clockwise if positive).
+    Arc { center: P, sweep_deg: f32 },
+    /// Cubic Bézier: two control points, then the end point.
+    Bezier([P; 3]),
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Flipper {
+    /// Name the rules refer to this element by; unique within the table.
+    pub id: Option<String>,
     pub pivot: P,
     /// Angle when the key is released / held.
     pub rest_deg: f32,
@@ -209,13 +249,33 @@ fn check_coefficient(name: &str, value: f32) -> Result<(), String> {
     check((0.0..=1.0).contains(&value), || format!("{name} must be between 0 and 1, got {value}"))
 }
 
+/// Settings every wall element shares.
+#[derive(PartialEq)]
+struct Props<'a> {
+    id: Option<&'a str>,
+    restitution: Option<f32>,
+    friction: Option<f32>,
+}
+
 /// What every wall curve can do: report its settings and turn into points.
 trait WallCurve {
     fn kind(&self) -> &'static str;
-    fn physics(&self) -> (Option<f32>, Option<f32>);
+    fn props(&self) -> Props<'_>;
     /// Points along the curve, at most `tolerance` away from it between
     /// points; `true` if it is closed.
     fn sample(&self, tolerance: f32) -> Result<(Vec<Vector>, bool), String>;
+}
+
+/// Implements `kind` and `props` for a wall struct.
+macro_rules! wall_props {
+    ($kind:literal) => {
+        fn kind(&self) -> &'static str {
+            $kind
+        }
+        fn props(&self) -> Props<'_> {
+            Props { id: self.id.as_deref(), restitution: self.restitution, friction: self.friction }
+        }
+    };
 }
 
 impl Element {
@@ -229,6 +289,7 @@ impl Element {
             Element::Arc(c) => Some(c),
             Element::Bezier(c) => Some(c),
             Element::Polyline(c) => Some(c),
+            Element::Path(c) => Some(c),
             Element::Flipper(_) => None,
         }
     }
@@ -241,29 +302,20 @@ impl Curve {
             Curve::Arc(c) => c,
             Curve::Bezier(c) => c,
             Curve::Polyline(c) => c,
+            Curve::Path(c) => c,
         }
     }
 }
 
 impl WallCurve for Line {
-    fn kind(&self) -> &'static str {
-        "line"
-    }
-    fn physics(&self) -> (Option<f32>, Option<f32>) {
-        (self.restitution, self.friction)
-    }
+    wall_props!("line");
     fn sample(&self, _tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
         Ok((vec![v(self.from), v(self.to)], false))
     }
 }
 
 impl WallCurve for Arc {
-    fn kind(&self) -> &'static str {
-        "arc"
-    }
-    fn physics(&self) -> (Option<f32>, Option<f32>) {
-        (self.restitution, self.friction)
-    }
+    wall_props!("arc");
     fn sample(&self, tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
         let (rx, ry) = match self.radius {
             Radius::Circle(r) => (r, r),
@@ -273,33 +325,17 @@ impl WallCurve for Arc {
         let sweep = (self.end_deg - self.start_deg).to_radians();
         check(sweep != 0.0, || "start_deg and end_deg are equal".into())?;
         let closed = sweep.abs() >= TAU - 1e-4;
-        let sweep = sweep.clamp(-TAU, TAU);
-        // A chord spanning angle a on radius r strays r(1 - cos(a/2)) from the
-        // arc. An ellipse is a circle of the larger radius squashed along one
-        // axis, which only shrinks that distance.
-        let r = rx.max(ry);
-        let max_step = 2.0 * (1.0 - (tolerance / r).min(1.0)).acos();
-        let n = ((sweep.abs() / max_step).ceil() as usize).max(4);
-        let (rs, rc) = self.rotation_deg.to_radians().sin_cos();
-        let count = if closed { n } else { n + 1 };
-        let pts = (0..count)
-            .map(|i| {
-                let t = self.start_deg.to_radians() + sweep * i as f32 / n as f32;
-                let (x, y) = (rx * t.cos(), ry * t.sin());
-                v(self.center) + Vector::new(x * rc - y * rs, x * rs + y * rc)
-            })
-            .collect();
+        let shape = Ellipse { center: v(self.center), rx, ry, rotation: self.rotation_deg.to_radians() };
+        let mut pts = shape.points(self.start_deg.to_radians(), sweep.clamp(-TAU, TAU), tolerance);
+        if closed {
+            pts.pop(); // same as the first point
+        }
         Ok((pts, closed))
     }
 }
 
 impl WallCurve for Bezier {
-    fn kind(&self) -> &'static str {
-        "bezier"
-    }
-    fn physics(&self) -> (Option<f32>, Option<f32>) {
-        (self.restitution, self.friction)
-    }
+    wall_props!("bezier");
     fn sample(&self, tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
         let n = self.points.len();
         check(n >= 4 && (n - 1) % 3 == 0, || {
@@ -310,6 +346,33 @@ impl WallCurve for Bezier {
             flatten_cubic([v(seg[0]), v(seg[1]), v(seg[2]), v(seg[3])], tolerance, 0, &mut pts);
         }
         Ok((pts, false))
+    }
+}
+
+struct Ellipse {
+    center: Vector,
+    rx: f32,
+    ry: f32,
+    rotation: f32,
+}
+
+impl Ellipse {
+    /// Points from angle `start` turning `sweep` (radians), both ends included.
+    fn points(&self, start: f32, sweep: f32, tolerance: f32) -> Vec<Vector> {
+        // A chord spanning angle a on radius r strays r(1 - cos(a/2)) from the
+        // arc. An ellipse is a circle of the larger radius squashed along one
+        // axis, which only shrinks that distance.
+        let r = self.rx.max(self.ry);
+        let max_step = 2.0 * (1.0 - (tolerance / r).min(1.0)).acos();
+        let n = ((sweep.abs() / max_step).ceil() as usize).max(4);
+        let (rs, rc) = self.rotation.sin_cos();
+        (0..=n)
+            .map(|i| {
+                let t = start + sweep * i as f32 / n as f32;
+                let (x, y) = (self.rx * t.cos(), self.ry * t.sin());
+                self.center + Vector::new(x * rc - y * rs, x * rs + y * rc)
+            })
+            .collect()
     }
 }
 
@@ -336,15 +399,39 @@ fn flatten_cubic(c: [Vector; 4], tolerance: f32, depth: u32, out: &mut Vec<Vecto
 }
 
 impl WallCurve for Polyline {
-    fn kind(&self) -> &'static str {
-        "polyline"
-    }
-    fn physics(&self) -> (Option<f32>, Option<f32>) {
-        (self.restitution, self.friction)
-    }
+    wall_props!("polyline");
     fn sample(&self, _tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
         check(self.points.len() >= 2, || "needs at least 2 points".into())?;
         Ok((self.points.iter().map(|&q| v(q)).collect(), self.closed))
+    }
+}
+
+impl WallCurve for Path {
+    wall_props!("path");
+    fn sample(&self, tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
+        check(!self.segments.is_empty(), || "needs at least one segment".into())?;
+        let start = v(self.start);
+        let mut pts = vec![start];
+        for (k, seg) in self.segments.iter().enumerate() {
+            let cur = *pts.last().unwrap();
+            match *seg {
+                Segment::Line(to) => pts.push(v(to)),
+                Segment::Arc { center, sweep_deg } => {
+                    let c = v(center);
+                    let r = cur.distance(c);
+                    check(r > 1e-6, || format!("segments[{k}] (arc): center is the current point"))?;
+                    check(sweep_deg != 0.0, || format!("segments[{k}] (arc): sweep_deg is 0"))?;
+                    let start_angle = (cur.y - c.y).atan2(cur.x - c.x);
+                    let circle = Ellipse { center: c, rx: r, ry: r, rotation: 0.0 };
+                    pts.extend(circle.points(start_angle, sweep_deg.to_radians(), tolerance).into_iter().skip(1));
+                }
+                Segment::Bezier([c1, c2, end]) => flatten_cubic([cur, v(c1), v(c2), v(end)], tolerance, 0, &mut pts),
+            }
+        }
+        if self.closed && pts.last().unwrap().distance(start) < 1e-6 {
+            pts.pop(); // the closing line is implied
+        }
+        Ok((pts, self.closed))
     }
 }
 
@@ -366,18 +453,27 @@ impl TableFile {
 
         let mut walls = Vec::new();
         let mut flippers = Vec::new();
+        let mut ids = std::collections::HashSet::new();
         for (i, el) in self.elements.into_iter().enumerate() {
             let ctx = |e: String| format!("elements[{i}] ({}): {e}", el.kind());
+            let id = match &el {
+                Element::Flipper(f) => f.id.clone(),
+                _ => el.wall().unwrap().props().id.map(str::to_owned),
+            };
+            if let Some(id) = &id {
+                check(!id.is_empty(), || "id is empty".into()).map_err(ctx)?;
+                check(ids.insert(id.clone()), || format!("id \"{id}\" is used twice")).map_err(ctx)?;
+            }
             match (&el, el.wall()) {
                 (Element::Flipper(f), _) => flippers.push(flipper(f, tolerance).map_err(ctx)?),
                 (_, Some(wall)) => {
-                    let (restitution, friction) = wall.physics();
-                    let restitution = restitution.unwrap_or(WALL_RESTITUTION);
-                    let friction = friction.unwrap_or(WALL_FRICTION);
+                    let props = wall.props();
+                    let restitution = props.restitution.unwrap_or(WALL_RESTITUTION);
+                    let friction = props.friction.unwrap_or(WALL_FRICTION);
                     check_coefficient("restitution", restitution).map_err(ctx)?;
                     check(friction >= 0.0, || "friction must be >= 0".into()).map_err(ctx)?;
                     let (pts, closed) = wall.sample(tolerance).map_err(ctx)?;
-                    walls.push(Wall { layer: Layer::Playfield, pts, closed, restitution, friction });
+                    walls.push(Wall { id, layer: Layer::Playfield, pts, closed, restitution, friction });
                 }
                 (_, None) => unreachable!("only flippers are not walls"),
             }
@@ -413,8 +509,9 @@ fn flipper(f: &Flipper, tolerance: f32) -> Result<FlipperDef, String> {
     for (j, curve) in f.shape.iter().enumerate() {
         let wall = curve.wall();
         let ctx = |e: String| format!("shape[{j}] ({}): {e}", wall.kind());
-        // Physics settings belong on the flipper itself.
-        check(wall.physics() == (None, None), || "set restitution/friction on the flipper, not its outline".into())
+        // The id and physics settings belong on the flipper itself.
+        let bare = Props { id: None, restitution: None, friction: None };
+        check(wall.props() == bare, || "set id/restitution/friction on the flipper, not its outline".into())
             .map_err(ctx)?;
         outline.extend(wall.sample(tolerance).map_err(ctx)?.0);
     }
@@ -423,6 +520,7 @@ fn flipper(f: &Flipper, tolerance: f32) -> Result<FlipperDef, String> {
         || "shape has no area".into(),
     )?;
     Ok(FlipperDef {
+        id: f.id.clone(),
         pivot: v(f.pivot),
         outline,
         rest: f.rest_deg.to_radians(),
@@ -461,7 +559,7 @@ mod tests {
                 Radius::Circle(r) => (r, r),
                 Radius::Ellipse([a, b]) => (a, b),
             };
-            let arc = Arc { center: [0.0, 0.0], radius, start_deg: 10.0, end_deg: 190.0, rotation_deg: 0.0, restitution: None, friction: None };
+            let arc = Arc { id: None, center: [0.0, 0.0], radius, start_deg: 10.0, end_deg: 190.0, rotation_deg: 0.0, restitution: None, friction: None };
             let (pts, _) = arc.sample(tol).unwrap();
             let truth = (0..=1000).map(|i| {
                 let t = (10.0 + 180.0 * i as f32 / 1000.0).to_radians();
@@ -474,7 +572,7 @@ mod tests {
 
     #[test]
     fn beziers_stay_within_tolerance_and_adapt() {
-        let curve = |points: Vec<P>| Bezier { points, restitution: None, friction: None };
+        let curve = |points: Vec<P>| Bezier { id: None, points, restitution: None, friction: None };
         let gentle = curve(vec![[0.0, 0.0], [0.1, 0.01], [0.2, 0.01], [0.3, 0.0]]);
         let sharp = curve(vec![[0.0, 0.0], [0.0, 0.3], [0.3, 0.3], [0.3, 0.0]]);
         for b in [&gentle, &sharp] {
@@ -491,5 +589,44 @@ mod tests {
         let (gentle_pts, _) = gentle.sample(0.0005).unwrap();
         let (sharp_pts, _) = sharp.sample(0.0005).unwrap();
         assert!(gentle_pts.len() < sharp_pts.len(), "{} vs {}", gentle_pts.len(), sharp_pts.len());
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    fn path(json: &str) -> Path {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn path_segments_connect() {
+        // Up, a quarter circle to the right, a Bézier down, closed back to the start.
+        let p = path(
+            r#"{"start": [0, 0], "closed": true, "segments": [
+                {"line": [0, 1]},
+                {"arc": {"center": [1, 1], "sweep_deg": -90}},
+                {"bezier": [[1.5, 2], [2, 1.5], [2, 0]]}
+            ]}"#,
+        );
+        let (pts, closed) = p.sample(0.0005).unwrap();
+        assert!(closed);
+        assert_eq!(pts[0], Vector::new(0.0, 0.0));
+        assert_eq!(pts[1], Vector::new(0.0, 1.0));
+        // The arc ends at the top of the circle around (1, 1).
+        assert!(pts.iter().any(|q| q.distance(Vector::new(1.0, 2.0)) < 1e-5));
+        assert!(pts.last().unwrap().distance(Vector::new(2.0, 0.0)) < 1e-6);
+    }
+
+    #[test]
+    fn path_errors() {
+        let p = path(r#"{"start": [0, 0], "segments": [{"arc": {"center": [0, 0], "sweep_deg": 90}}]}"#);
+        assert!(p.sample(0.0005).unwrap_err().contains("segments[0] (arc)"));
+        let e = serde_json::from_str::<Path>(r#"{"start": [0, 0], "segments": [{"curve": [1, 1]}]}"#)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(e.contains("unknown variant `curve`"), "{e}");
     }
 }
