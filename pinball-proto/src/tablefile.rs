@@ -4,7 +4,8 @@
 //! corner of the table, +x points right, +y points up the playfield (away from
 //! the player). Angles are counter-clockwise from +x.
 //!
-//! Every curve is turned into short straight segments for the physics.
+//! Every curve is turned into short straight segments for the physics; they
+//! stray at most `curve_tolerance` metres from the true curve.
 
 use std::f32::consts::TAU;
 
@@ -27,6 +28,10 @@ pub struct TableFile {
     /// Full gravity in m/s²; the ball feels `gravity * sin(angle)` along the table.
     #[serde(default = "default_gravity")]
     pub gravity: f32,
+    /// How far (m) the straight segments a curve is turned into may stray
+    /// from the true curve.
+    #[serde(default = "default_curve_tolerance")]
+    pub curve_tolerance: f32,
     pub ball: BallSpec,
     pub launcher: LauncherSpec,
     pub elements: Vec<Element>,
@@ -34,6 +39,10 @@ pub struct TableFile {
 
 fn default_gravity() -> f32 {
     9.81
+}
+
+fn default_curve_tolerance() -> f32 {
+    0.0005
 }
 
 #[derive(Deserialize)]
@@ -204,8 +213,9 @@ fn check_coefficient(name: &str, value: f32) -> Result<(), String> {
 trait WallCurve {
     fn kind(&self) -> &'static str;
     fn physics(&self) -> (Option<f32>, Option<f32>);
-    /// Points along the curve; `true` if it is closed.
-    fn sample(&self) -> Result<(Vec<Vector>, bool), String>;
+    /// Points along the curve, at most `tolerance` away from it between
+    /// points; `true` if it is closed.
+    fn sample(&self, tolerance: f32) -> Result<(Vec<Vector>, bool), String>;
 }
 
 impl Element {
@@ -242,7 +252,7 @@ impl WallCurve for Line {
     fn physics(&self) -> (Option<f32>, Option<f32>) {
         (self.restitution, self.friction)
     }
-    fn sample(&self) -> Result<(Vec<Vector>, bool), String> {
+    fn sample(&self, _tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
         Ok((vec![v(self.from), v(self.to)], false))
     }
 }
@@ -254,7 +264,7 @@ impl WallCurve for Arc {
     fn physics(&self) -> (Option<f32>, Option<f32>) {
         (self.restitution, self.friction)
     }
-    fn sample(&self) -> Result<(Vec<Vector>, bool), String> {
+    fn sample(&self, tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
         let (rx, ry) = match self.radius {
             Radius::Circle(r) => (r, r),
             Radius::Ellipse([rx, ry]) => (rx, ry),
@@ -264,8 +274,12 @@ impl WallCurve for Arc {
         check(sweep != 0.0, || "start_deg and end_deg are equal".into())?;
         let closed = sweep.abs() >= TAU - 1e-4;
         let sweep = sweep.clamp(-TAU, TAU);
-        // Segments of at most 5°.
-        let n = ((sweep.abs() / 5f32.to_radians()).ceil() as usize).max(4);
+        // A chord spanning angle a on radius r strays r(1 - cos(a/2)) from the
+        // arc. An ellipse is a circle of the larger radius squashed along one
+        // axis, which only shrinks that distance.
+        let r = rx.max(ry);
+        let max_step = 2.0 * (1.0 - (tolerance / r).min(1.0)).acos();
+        let n = ((sweep.abs() / max_step).ceil() as usize).max(4);
         let (rs, rc) = self.rotation_deg.to_radians().sin_cos();
         let count = if closed { n } else { n + 1 };
         let pts = (0..count)
@@ -286,23 +300,39 @@ impl WallCurve for Bezier {
     fn physics(&self) -> (Option<f32>, Option<f32>) {
         (self.restitution, self.friction)
     }
-    fn sample(&self) -> Result<(Vec<Vector>, bool), String> {
+    fn sample(&self, tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
         let n = self.points.len();
         check(n >= 4 && (n - 1) % 3 == 0, || {
             format!("needs 3n+1 points (4, 7, 10, ...): start, 2 controls, end, ...; got {n}")
         })?;
-        const SUB: usize = 16;
         let mut pts = vec![v(self.points[0])];
         for seg in self.points.windows(4).step_by(3) {
-            let [p0, p1, p2, p3] = [v(seg[0]), v(seg[1]), v(seg[2]), v(seg[3])];
-            for i in 1..=SUB {
-                let t = i as f32 / SUB as f32;
-                let u = 1.0 - t;
-                pts.push(p0 * (u * u * u) + p1 * (3.0 * u * u * t) + p2 * (3.0 * u * t * t) + p3 * (t * t * t));
-            }
+            flatten_cubic([v(seg[0]), v(seg[1]), v(seg[2]), v(seg[3])], tolerance, 0, &mut pts);
         }
         Ok((pts, false))
     }
+}
+
+/// Appends points along a cubic Bézier (excluding its start), halving it until
+/// each piece is flat enough. The curve stays within 3/4 of the control
+/// points' largest distance from the chord, so that bounds the error.
+fn flatten_cubic(c: [Vector; 4], tolerance: f32, depth: u32, out: &mut Vec<Vector>) {
+    let [p0, p1, p2, p3] = c;
+    let chord = p3 - p0;
+    let dist = |p: Vector| {
+        let len = chord.length();
+        if len < 1e-9 { p.distance(p0) } else { (p - p0).perp_dot(chord).abs() / len }
+    };
+    if depth >= 16 || 0.75 * dist(p1).max(dist(p2)) <= tolerance {
+        out.push(p3);
+        return;
+    }
+    // de Casteljau split at t = 0.5.
+    let (a, b, c) = ((p0 + p1) * 0.5, (p1 + p2) * 0.5, (p2 + p3) * 0.5);
+    let (d, e) = ((a + b) * 0.5, (b + c) * 0.5);
+    let mid = (d + e) * 0.5;
+    flatten_cubic([p0, a, d, mid], tolerance, depth + 1, out);
+    flatten_cubic([mid, e, c, p3], tolerance, depth + 1, out);
 }
 
 impl WallCurve for Polyline {
@@ -312,7 +342,7 @@ impl WallCurve for Polyline {
     fn physics(&self) -> (Option<f32>, Option<f32>) {
         (self.restitution, self.friction)
     }
-    fn sample(&self) -> Result<(Vec<Vector>, bool), String> {
+    fn sample(&self, _tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
         check(self.points.len() >= 2, || "needs at least 2 points".into())?;
         Ok((self.points.iter().map(|&q| v(q)).collect(), self.closed))
     }
@@ -324,6 +354,8 @@ impl TableFile {
         check(size.x > 0.0 && size.y > 0.0, || "size must be positive".into())?;
         check(self.angle_deg > 0.0 && self.angle_deg < 90.0, || "angle_deg must be between 0 and 90".into())?;
         check(self.gravity > 0.0, || "gravity must be > 0".into())?;
+        let tolerance = self.curve_tolerance;
+        check(tolerance > 0.0, || "curve_tolerance must be > 0".into())?;
         check(self.ball.radius > 0.0, || "ball.radius must be > 0".into())?;
         check(self.ball.mass > 0.0, || "ball.mass must be > 0".into())?;
         check_coefficient("ball.restitution", self.ball.restitution)?;
@@ -337,14 +369,14 @@ impl TableFile {
         for (i, el) in self.elements.into_iter().enumerate() {
             let ctx = |e: String| format!("elements[{i}] ({}): {e}", el.kind());
             match (&el, el.wall()) {
-                (Element::Flipper(f), _) => flippers.push(flipper(f).map_err(ctx)?),
+                (Element::Flipper(f), _) => flippers.push(flipper(f, tolerance).map_err(ctx)?),
                 (_, Some(wall)) => {
                     let (restitution, friction) = wall.physics();
                     let restitution = restitution.unwrap_or(WALL_RESTITUTION);
                     let friction = friction.unwrap_or(WALL_FRICTION);
                     check_coefficient("restitution", restitution).map_err(ctx)?;
                     check(friction >= 0.0, || "friction must be >= 0".into()).map_err(ctx)?;
-                    let (pts, closed) = wall.sample().map_err(ctx)?;
+                    let (pts, closed) = wall.sample(tolerance).map_err(ctx)?;
                     walls.push(Wall { layer: Layer::Playfield, pts, closed, restitution, friction });
                 }
                 (_, None) => unreachable!("only flippers are not walls"),
@@ -373,7 +405,7 @@ impl TableFile {
     }
 }
 
-fn flipper(f: &Flipper) -> Result<FlipperDef, String> {
+fn flipper(f: &Flipper, tolerance: f32) -> Result<FlipperDef, String> {
     check(f.speed_deg_per_s > 0.0, || "speed_deg_per_s must be > 0".into())?;
     check_coefficient("restitution", f.restitution)?;
     check(!f.shape.is_empty(), || "shape is empty".into())?;
@@ -384,7 +416,7 @@ fn flipper(f: &Flipper) -> Result<FlipperDef, String> {
         // Physics settings belong on the flipper itself.
         check(wall.physics() == (None, None), || "set restitution/friction on the flipper, not its outline".into())
             .map_err(ctx)?;
-        outline.extend(wall.sample().map_err(ctx)?.0);
+        outline.extend(wall.sample(tolerance).map_err(ctx)?.0);
     }
     check(
         rapier2d::parry::transformation::convex_hull(&outline).len() >= 3,
@@ -404,4 +436,60 @@ fn flipper(f: &Flipper) -> Result<FlipperDef, String> {
             Key::Right => Button::Right,
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Largest distance from points on the true curve to the sampled polyline.
+    fn max_error(truth: impl Iterator<Item = Vector>, poly: &[Vector]) -> f32 {
+        let seg_dist = |p: Vector, a: Vector, b: Vector| {
+            let ab = b - a;
+            let t = ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
+            p.distance(a + ab * t)
+        };
+        truth
+            .map(|p| poly.windows(2).map(|w| seg_dist(p, w[0], w[1])).fold(f32::MAX, f32::min))
+            .fold(0.0, f32::max)
+    }
+
+    #[test]
+    fn arcs_stay_within_tolerance() {
+        for (radius, tol) in [(Radius::Circle(0.26), 0.0005), (Radius::Ellipse([0.08, 0.03]), 0.0002), (Radius::Circle(0.01), 0.002)] {
+            let (rx, ry) = match radius {
+                Radius::Circle(r) => (r, r),
+                Radius::Ellipse([a, b]) => (a, b),
+            };
+            let arc = Arc { center: [0.0, 0.0], radius, start_deg: 10.0, end_deg: 190.0, rotation_deg: 0.0, restitution: None, friction: None };
+            let (pts, _) = arc.sample(tol).unwrap();
+            let truth = (0..=1000).map(|i| {
+                let t = (10.0 + 180.0 * i as f32 / 1000.0).to_radians();
+                Vector::new(rx * t.cos(), ry * t.sin())
+            });
+            let err = max_error(truth, &pts);
+            assert!(err <= tol * 1.01, "arc error {err} > {tol} with {} points", pts.len());
+        }
+    }
+
+    #[test]
+    fn beziers_stay_within_tolerance_and_adapt() {
+        let curve = |points: Vec<P>| Bezier { points, restitution: None, friction: None };
+        let gentle = curve(vec![[0.0, 0.0], [0.1, 0.01], [0.2, 0.01], [0.3, 0.0]]);
+        let sharp = curve(vec![[0.0, 0.0], [0.0, 0.3], [0.3, 0.3], [0.3, 0.0]]);
+        for b in [&gentle, &sharp] {
+            let c = b.points.iter().map(|&p| v(p)).collect::<Vec<_>>();
+            let truth = (0..=1000).map(|i| {
+                let t = i as f32 / 1000.0;
+                let u = 1.0 - t;
+                c[0] * (u * u * u) + c[1] * (3.0 * u * u * t) + c[2] * (3.0 * u * t * t) + c[3] * (t * t * t)
+            });
+            let (pts, _) = b.sample(0.0005).unwrap();
+            let err = max_error(truth, &pts);
+            assert!(err <= 0.0005 * 1.01, "bezier error {err} with {} points", pts.len());
+        }
+        let (gentle_pts, _) = gentle.sample(0.0005).unwrap();
+        let (sharp_pts, _) = sharp.sample(0.0005).unwrap();
+        assert!(gentle_pts.len() < sharp_pts.len(), "{} vs {}", gentle_pts.len(), sharp_pts.len());
+    }
 }

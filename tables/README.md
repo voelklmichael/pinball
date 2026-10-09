@@ -22,6 +22,7 @@ Unknown fields are errors, so a typo is reported instead of silently ignored.
 | `size` | yes | | `[width, height]` |
 | `angle_deg` | yes | | Tilt of the table |
 | `gravity` | no | `9.81` | Full gravity. The ball feels `gravity × sin(angle)` along the table. A larger value makes the game faster; the built-in table uses 22 |
+| `curve_tolerance` | no | `0.0005` | Curves are turned into short straight segments for the physics; this is how far (m) those may stray from the true curve. Anything under ~1 mm is invisible in play |
 | `ball` | yes | | See below |
 | `launcher` | yes | | See below |
 | `elements` | yes | | List of walls and flippers |
