@@ -25,7 +25,6 @@ impl Layer {
 }
 
 pub struct LayerDef {
-    #[allow(dead_code)] // read by the rules engine, which is not built yet
     pub name: String,
     /// Rolling resistance coefficient: while rolling on this layer the ball
     /// slows down by `rolling_resistance * gravity` (m/s²).
@@ -34,7 +33,6 @@ pub struct LayerDef {
 
 pub struct Wall {
     /// Name the rules refer to it by.
-    #[allow(dead_code)] // read by the rules engine, which is not built yet
     pub id: Option<String>,
     pub layer: Layer,
     pub pts: Vec<Vector>,
@@ -53,7 +51,6 @@ pub enum Button {
 
 #[derive(Clone)]
 pub struct FlipperDef {
-    #[allow(dead_code)] // read by the rules engine, which is not built yet
     pub id: Option<String>,
     pub pivot: Vector,
     /// Outline in local coordinates: pivot at the origin, pointing along +x.
