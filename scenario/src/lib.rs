@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use engine::layout::Layout;
-use engine::physics::{Event, PHYSICS_HZ, Table, Timed};
+use engine::physics::{Event, PHYSICS_HZ, Table, Thing, Timed};
 use engine::rapier2d::math::Vector;
 use serde::Deserialize;
 
@@ -97,6 +97,8 @@ pub struct AtEnd {
     /// m/s
     #[serde(default = "f32_max")]
     pub max_speed: f32,
+    /// The layer the ball must be on.
+    pub layer: Option<String>,
 }
 
 fn f32_max() -> f32 {
@@ -155,8 +157,8 @@ pub struct Recording {
     pub events: Vec<(Timed, String, String)>,
     /// Ball positions after every step: (step, ball number, position).
     pub positions: Vec<(u64, u32, Vector)>,
-    /// Balls on the table at the end: (number, position, velocity).
-    pub end: Vec<(u32, Vector, Vector)>,
+    /// Balls on the table at the end: (number, position, velocity, layer name).
+    pub end: Vec<(u32, Vector, Vector, String)>,
 }
 
 impl Recording {
@@ -176,8 +178,8 @@ impl Recording {
         for (e, line, _) in &self.events {
             out += &format!("{:7.3}  {line}\n", e.time());
         }
-        for (n, p, vel) in &self.end {
-            out += &format!("    end  ball#{n} at ({:.3}, {:.3}) v=({:.2}, {:.2})\n", p.x, p.y, vel.x, vel.y);
+        for (n, p, vel, layer) in &self.end {
+            out += &format!("    end  ball#{n} at ({:.3}, {:.3}) v=({:.2}, {:.2}) on {layer}\n", p.x, p.y, vel.x, vel.y);
         }
         out
     }
@@ -190,6 +192,9 @@ fn key(table: &Table, event: &Event) -> String {
         Event::Launch { .. } => "launch".into(),
         Event::Touch { thing, .. } => format!("touch {}", table.name(thing)),
         Event::Leave { thing, .. } => format!("leave {}", table.name(thing)),
+        Event::Kick { thing, .. } => format!("kick {}", table.name(thing)),
+        Event::Switch { switch, .. } => format!("switch {}", table.name(Thing::Switch(switch))),
+        Event::Cross { transition, .. } => format!("cross {}", table.name(Thing::Transition(transition))),
         Event::FlipperUp { .. } | Event::FlipperDown { .. } => table.describe(event),
         Event::Drain { .. } => "drain".into(),
     }
@@ -250,7 +255,11 @@ impl Scenario {
                 positions.push((table.steps(), b.number, table.ball_pos(b)));
             }
         }
-        let end = table.balls.iter().map(|b| (b.number, table.ball_pos(b), table.ball_vel(b))).collect();
+        let end = table
+            .balls
+            .iter()
+            .map(|b| (b.number, table.ball_pos(b), table.ball_vel(b), table.layout.layer_name(b.layer).to_owned()))
+            .collect();
         Recording { events, positions, end }
     }
 
@@ -281,15 +290,25 @@ impl Scenario {
                 let hit = rec.positions.iter().any(|&(step, _, p)| in_window(step) && inside(p));
                 (!hit).then(|| format!("no ball entered {:?}..{:?} between {}s and {}s", r.min, r.max, window[0], window[1]))
             } else if let Some(end) = &e.at_end {
-                let ok = rec.end.iter().any(|&(_, p, vel)| p.distance(v(end.near)) <= end.within && vel.length() <= end.max_speed);
-                let balls: Vec<String> =
-                    rec.end.iter().map(|(n, p, vel)| format!("ball#{n} at ({:.3}, {:.3}) speed {:.3}", p.x, p.y, vel.length())).collect();
+                let ok = rec.end.iter().any(|(_, p, vel, layer)| {
+                    p.distance(v(end.near)) <= end.within
+                        && vel.length() <= end.max_speed
+                        && end.layer.as_ref().is_none_or(|l| l == layer)
+                });
+                let balls: Vec<String> = rec
+                    .end
+                    .iter()
+                    .map(|(n, p, vel, layer)| {
+                        format!("ball#{n} at ({:.3}, {:.3}) speed {:.3} on {layer}", p.x, p.y, vel.length())
+                    })
+                    .collect();
                 (!ok).then(|| {
                     format!(
-                        "no ball within {} of {:?} slower than {} at the end; balls: [{}]",
+                        "no ball within {} of {:?} slower than {}{} at the end; balls: [{}]",
                         end.within,
                         end.near,
                         end.max_speed,
+                        end.layer.as_ref().map(|l| format!(" on {l}")).unwrap_or_default(),
                         balls.join(", ")
                     )
                 })

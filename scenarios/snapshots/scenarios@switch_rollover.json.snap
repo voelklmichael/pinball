@@ -1,0 +1,10 @@
+---
+source: scenario/tests/scenarios.rs
+description: A ball rolling over a switch triggers it without being slowed or deflected.
+input_file: scenarios/switch_rollover.json
+---
+  0.000  serve ball#1 at (0.220, 0.800)
+  0.398  switch ball#1 lane
+  0.835  touch ball#1 box
+  0.850  leave ball#1 box
+    end  ball#1 at (0.220, 0.072) v=(0.00, 0.15) on playfield

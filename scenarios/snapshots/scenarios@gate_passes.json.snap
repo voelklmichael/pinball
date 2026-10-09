@@ -1,0 +1,9 @@
+---
+source: scenario/tests/scenarios.rs
+description: A ball moving up through a one-way gate from the open side passes it.
+input_file: scenarios/gate_passes.json
+---
+  0.000  serve ball#1 at (0.470, 0.300)
+  0.262  touch ball#1 box
+  0.273  leave ball#1 box
+    end  ball#1 at (0.470, 0.754) v=(0.00, -1.26) on playfield

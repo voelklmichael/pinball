@@ -1,0 +1,11 @@
+{
+  "description": "A ball moving up through a one-way gate from the open side passes it.",
+  "table": "../tables/bench_kickers.json",
+  "duration": 0.5,
+  "serve": false,
+  "balls": [{ "position": [0.47, 0.30], "velocity": [0.0, 3.0] }],
+  "expect": [
+    {"never": "touch gate"},
+    {"enters": {"min": [0.42, 0.65], "max": [0.52, 1.0]}, "between": [0.0, 0.4]}
+  ]
+}

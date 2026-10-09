@@ -1,0 +1,55 @@
+{
+  "name": "Bench: ramps and an upper level",
+  "size": [0.52, 1.07],
+  "angle_deg": 6.5,
+  "gravity": 22.0,
+  "ball": { "radius": 0.0135 },
+  "launcher": { "position": [0.15, 0.10], "start_velocity": [0.0, 3.5] },
+  "layers": [
+    {
+      "id": "playfield",
+      "elements": [
+        { "type": "polyline", "id": "box", "points": [[0, 0], [0.52, 0], [0.52, 1.07], [0, 1.07]], "closed": true }
+      ]
+    },
+    {
+      "id": "loop",
+      "defaults": { "restitution": 0.1 },
+      "ramp": {
+        "center": {
+          "start": [0.15, 0.30],
+          "segments": [
+            { "line": [0.15, 0.55] },
+            { "arc": { "center": [0.30, 0.55], "sweep_deg": -180 } },
+            { "line": [0.45, 0.35] }
+          ]
+        },
+        "width": 0.055,
+        "heights": [[0, 0], [0.4, 0.06], [0.6, 0.06], [1, 0.01]],
+        "from": "playfield",
+        "to": "playfield"
+      }
+    },
+    {
+      "id": "lift",
+      "defaults": { "restitution": 0.1 },
+      "ramp": {
+        "center": { "start": [0.05, 0.15], "segments": [{ "line": [0.05, 0.87] }] },
+        "width": 0.055,
+        "heights": [[0, 0], [1, 0.06]],
+        "from": "playfield",
+        "to": "upper"
+      }
+    },
+    {
+      "id": "upper",
+      "height": 0.06,
+      "elements": [
+        { "type": "polyline", "id": "upper_wall", "points": [[0.0, 0.90], [0.0, 1.05], [0.52, 1.05], [0.52, 0.84]] },
+        { "type": "line", "id": "upper_gate", "from": [0.0, 0.90], "to": [0.10, 0.88], "one_way": [0, 1] },
+        { "type": "line", "id": "upper_floor", "from": [0.10, 0.88], "to": [0.40, 0.84] },
+        { "type": "transition", "id": "upper_hole", "from": [0.40, 0.84], "to": [0.52, 0.84], "direction": [0, -1], "target": "playfield" }
+      ]
+    }
+  ]
+}

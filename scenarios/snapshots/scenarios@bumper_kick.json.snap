@@ -1,0 +1,20 @@
+---
+source: scenario/tests/scenarios.rs
+description: A ball falling onto a pop bumper is kicked back up the table.
+input_file: scenarios/bumper_kick.json
+---
+  0.000  serve ball#1 at (0.100, 0.950)
+  0.315  touch ball#1 bumper
+  0.315  kick ball#1 bumper
+  0.319  leave ball#1 bumper
+  0.419  touch ball#1 box
+  0.427  leave ball#1 box
+  0.644  touch ball#1 bumper
+  0.644  kick ball#1 bumper
+  0.648  leave ball#1 bumper
+  0.748  touch ball#1 box
+  0.756  leave ball#1 box
+  0.973  touch ball#1 bumper
+  0.973  kick ball#1 bumper
+  0.977  leave ball#1 bumper
+    end  ball#1 at (0.100, 0.880) v=(0.00, 1.53) on playfield

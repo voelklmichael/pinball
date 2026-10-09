@@ -1,0 +1,15 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A ball falling onto a slingshot is kicked away from it, up and to the right."
+input_file: scenarios/sling_kick.json
+---
+  0.000  serve ball#1 at (0.340, 0.700)
+  0.490  touch ball#1 sling
+  0.490  kick ball#1 sling
+  0.494  leave ball#1 sling
+  0.608  touch ball#1 box
+  0.615  leave ball#1 box
+  0.904  touch ball#1 sling
+  0.904  kick ball#1 sling
+  0.908  leave ball#1 sling
+    end  ball#1 at (0.481, 0.451) v=(1.00, 0.57) on playfield

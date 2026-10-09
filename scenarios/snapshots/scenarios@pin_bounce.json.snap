@@ -1,0 +1,10 @@
+---
+source: scenario/tests/scenarios.rs
+description: A ball falling onto the pin between the flippers bounces back up.
+input_file: scenarios/pin_bounce.json
+---
+  0.000  serve ball#1 at (0.260, 0.400)
+  0.498  touch ball#1 center_pin
+  0.498  kick ball#1 center_pin
+  0.504  leave ball#1 center_pin
+    end  ball#1 at (0.260, 0.308) v=(0.00, -0.59) on playfield

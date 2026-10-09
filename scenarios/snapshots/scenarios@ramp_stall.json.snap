@@ -1,0 +1,12 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A ball that stalls on the ramp entrance line and rolls back ends up on the playfield, not stuck on the ramp layer."
+input_file: scenarios/ramp_stall.json
+---
+  0.000  serve ball#1 at (0.150, 0.300)
+  0.002  cross ball#1 loop.entrance: playfield -> loop
+  0.079  cross ball#1 loop.entrance: loop -> playfield
+  0.423  touch ball#1 box
+  0.433  leave ball#1 box
+  0.710  touch ball#1 box
+    end  ball#1 at (0.150, 0.013) v=(0.00, 0.00) on playfield

@@ -7,12 +7,15 @@
 //! Every curve is turned into short straight segments for the physics; they
 //! stray at most `curve_tolerance` metres from the true curve.
 
+use std::collections::HashMap;
 use std::f32::consts::TAU;
 
 use rapier2d::math::Vector;
 use serde::Deserialize;
 
-use crate::layout::{BallDef, Button, FlipperDef, Launcher, Layer, LayerDef, Layout, Wall};
+use crate::layout::{
+    BallDef, Button, FlipperDef, Launcher, Layer, LayerDef, Layout, Ramp, SensorShape, Switch, Transition, Wall,
+};
 
 type P = [f32; 2];
 
@@ -51,7 +54,49 @@ pub struct LayerSpec {
     /// Restitution and friction for walls on this layer that don't set their own.
     #[serde(default)]
     pub defaults: WallDefaults,
+    /// Height above the playfield (for drawing), e.g. for an upper level.
+    #[serde(default)]
+    pub height: f32,
+    /// Makes this layer a ramp: generates its rails, slope and the
+    /// transitions at both ends.
+    pub ramp: Option<RampSpec>,
+    #[serde(default)]
     pub elements: Vec<Element>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RampSpec {
+    /// Centreline from the entrance to the exit, like a path.
+    pub center: CenterSpec,
+    /// Width between the rails.
+    pub width: f32,
+    /// `[position, height]` pairs: position along the centreline from 0
+    /// (entrance) to 1 (exit), height above the playfield in metres.
+    pub heights: Vec<[f32; 2]>,
+    /// Layer the entrance is on.
+    pub from: String,
+    /// Layer the ball lands on at the exit.
+    pub to: String,
+    #[serde(default)]
+    pub rails: Rails,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CenterSpec {
+    pub start: P,
+    pub segments: Vec<Segment>,
+}
+
+#[derive(Deserialize, Default, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Rails {
+    #[default]
+    Both,
+    Left,
+    Right,
+    None,
 }
 
 fn default_rolling_resistance() -> f32 {
@@ -110,6 +155,8 @@ pub enum Element {
     Polyline(Polyline),
     Path(Path),
     Flipper(Flipper),
+    Switch(SwitchSpec),
+    Transition(TransitionSpec),
 }
 
 /// The curves a flipper outline is made of: walls without id or physics settings.
@@ -132,6 +179,10 @@ pub struct Line {
     pub to: P,
     pub restitution: Option<f32>,
     pub friction: Option<f32>,
+    /// Kicks the ball away at this speed (m/s): pop bumpers, slingshots.
+    pub kick: Option<f32>,
+    /// One-way gate: balls moving in this direction pass through.
+    pub one_way: Option<P>,
 }
 
 /// Circular or elliptic arc from `start_deg` to `end_deg` (counter-clockwise if
@@ -150,6 +201,10 @@ pub struct Arc {
     pub rotation_deg: f32,
     pub restitution: Option<f32>,
     pub friction: Option<f32>,
+    /// Kicks the ball away at this speed (m/s): pop bumpers, slingshots.
+    pub kick: Option<f32>,
+    /// One-way gate: balls moving in this direction pass through.
+    pub one_way: Option<P>,
 }
 
 #[derive(Deserialize)]
@@ -170,6 +225,10 @@ pub struct Bezier {
     pub points: Vec<P>,
     pub restitution: Option<f32>,
     pub friction: Option<f32>,
+    /// Kicks the ball away at this speed (m/s): pop bumpers, slingshots.
+    pub kick: Option<f32>,
+    /// One-way gate: balls moving in this direction pass through.
+    pub one_way: Option<P>,
 }
 
 #[derive(Deserialize)]
@@ -182,6 +241,10 @@ pub struct Polyline {
     pub closed: bool,
     pub restitution: Option<f32>,
     pub friction: Option<f32>,
+    /// Kicks the ball away at this speed (m/s): pop bumpers, slingshots.
+    pub kick: Option<f32>,
+    /// One-way gate: balls moving in this direction pass through.
+    pub one_way: Option<P>,
 }
 
 /// Connected wall made of segments, each starting where the previous one ended,
@@ -198,6 +261,10 @@ pub struct Path {
     pub closed: bool,
     pub restitution: Option<f32>,
     pub friction: Option<f32>,
+    /// Kicks the ball away at this speed (m/s): pop bumpers, slingshots.
+    pub kick: Option<f32>,
+    /// One-way gate: balls moving in this direction pass through.
+    pub one_way: Option<P>,
 }
 
 #[derive(Deserialize)]
@@ -245,6 +312,34 @@ fn default_flipper_friction() -> f32 {
     0.35
 }
 
+/// Reports a ball rolling over it without blocking it. Give exactly one
+/// shape: `center` + `radius`, `min` + `max` (rectangle) or `from` + `to` (line).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SwitchSpec {
+    pub id: Option<String>,
+    pub center: Option<P>,
+    pub radius: Option<f32>,
+    pub min: Option<P>,
+    pub max: Option<P>,
+    pub from: Option<P>,
+    pub to: Option<P>,
+}
+
+/// Line `from`-`to`: a ball on this layer crossing it in `direction` moves to
+/// layer `target`. With `two_way`, balls on `target` crossing back return.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransitionSpec {
+    pub id: Option<String>,
+    pub from: P,
+    pub to: P,
+    pub direction: P,
+    pub target: String,
+    #[serde(default)]
+    pub two_way: bool,
+}
+
 #[derive(Deserialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum Key {
@@ -278,11 +373,13 @@ fn check_coefficient(name: &str, value: f32) -> Result<(), String> {
 }
 
 /// Settings every wall element shares.
-#[derive(PartialEq)]
+#[derive(PartialEq, Default)]
 struct Props<'a> {
     id: Option<&'a str>,
     restitution: Option<f32>,
     friction: Option<f32>,
+    kick: Option<f32>,
+    one_way: Option<P>,
 }
 
 /// What every wall curve can do: report its settings and turn into points.
@@ -301,14 +398,34 @@ macro_rules! wall_props {
             $kind
         }
         fn props(&self) -> Props<'_> {
-            Props { id: self.id.as_deref(), restitution: self.restitution, friction: self.friction }
+            Props {
+                id: self.id.as_deref(),
+                restitution: self.restitution,
+                friction: self.friction,
+                kick: self.kick,
+                one_way: self.one_way,
+            }
         }
     };
 }
 
 impl Element {
     fn kind(&self) -> &'static str {
-        self.wall().map_or("flipper", |w| w.kind())
+        match self {
+            Element::Flipper(_) => "flipper",
+            Element::Switch(_) => "switch",
+            Element::Transition(_) => "transition",
+            _ => self.wall().unwrap().kind(),
+        }
+    }
+
+    fn id(&self) -> Option<&str> {
+        match self {
+            Element::Flipper(f) => f.id.as_deref(),
+            Element::Switch(s) => s.id.as_deref(),
+            Element::Transition(t) => t.id.as_deref(),
+            _ => self.wall().unwrap().props().id,
+        }
     }
 
     fn wall(&self) -> Option<&dyn WallCurve> {
@@ -318,7 +435,7 @@ impl Element {
             Element::Bezier(c) => Some(c),
             Element::Polyline(c) => Some(c),
             Element::Path(c) => Some(c),
-            Element::Flipper(_) => None,
+            Element::Flipper(_) | Element::Switch(_) | Element::Transition(_) => None,
         }
     }
 }
@@ -437,10 +554,21 @@ impl WallCurve for Polyline {
 impl WallCurve for Path {
     wall_props!("path");
     fn sample(&self, tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
-        check(!self.segments.is_empty(), || "needs at least one segment".into())?;
         let start = v(self.start);
+        let mut pts = sample_path(start, &self.segments, tolerance)?;
+        if self.closed && pts.last().unwrap().distance(start) < 1e-6 {
+            pts.pop(); // the closing line is implied
+        }
+        Ok((pts, self.closed))
+    }
+}
+
+/// Points along a path's segments, starting with `start`.
+fn sample_path(start: Vector, segments: &[Segment], tolerance: f32) -> Result<Vec<Vector>, String> {
+    check(!segments.is_empty(), || "needs at least one segment".into())?;
+    {
         let mut pts = vec![start];
-        for (k, seg) in self.segments.iter().enumerate() {
+        for (k, seg) in segments.iter().enumerate() {
             let cur = *pts.last().unwrap();
             match *seg {
                 Segment::Line(to) => pts.push(v(to)),
@@ -456,10 +584,7 @@ impl WallCurve for Path {
                 Segment::Bezier([c1, c2, end]) => flatten_cubic([cur, v(c1), v(c2), v(end)], tolerance, 0, &mut pts),
             }
         }
-        if self.closed && pts.last().unwrap().distance(start) < 1e-6 {
-            pts.pop(); // the closing line is implied
-        }
-        Ok((pts, self.closed))
+        Ok(pts)
     }
 }
 
@@ -482,9 +607,20 @@ impl TableFile {
         check(!self.layers.is_empty(), || "needs at least one layer".into())?;
         check(self.layers.len() <= Layer::MAX, || format!("at most {} layers", Layer::MAX))?;
 
+        // Layers can refer to each other in any order, so learn their names first.
+        let layer_ids: HashMap<String, Layer> =
+            self.layers.iter().enumerate().map(|(i, l)| (l.id.clone(), Layer(i as u8))).collect();
+        let lookup = |name: &str, own: Layer| -> Result<Layer, String> {
+            let &l = layer_ids.get(name).ok_or_else(|| format!("no layer \"{name}\""))?;
+            check(l != own, || format!("\"{name}\" is this layer itself"))?;
+            Ok(l)
+        };
+
         let mut layers = Vec::new();
         let mut walls = Vec::new();
         let mut flippers = Vec::new();
+        let mut switches = Vec::new();
+        let mut transitions = Vec::new();
         // Layer and element ids share one namespace.
         let mut ids = std::collections::HashSet::new();
         let mut claim = |id: &str| -> Result<(), String> {
@@ -496,31 +632,128 @@ impl TableFile {
             let lctx = |e: String| format!("layers[{li}] ({}): {e}", spec.id);
             claim(&spec.id).map_err(lctx)?;
             check(spec.rolling_resistance >= 0.0, || "rolling_resistance must be >= 0".into()).map_err(lctx)?;
+            check(spec.height >= 0.0, || "height must be >= 0".into()).map_err(lctx)?;
+            let wall_defaults = |props: &Props| {
+                let restitution = props.restitution.or(spec.defaults.restitution).unwrap_or(WALL_RESTITUTION);
+                let friction = props.friction.or(spec.defaults.friction).unwrap_or(WALL_FRICTION);
+                (restitution, friction)
+            };
+
+            let ramp = match &spec.ramp {
+                None => None,
+                Some(r) => {
+                    let rctx = |e: String| lctx(format!("ramp: {e}"));
+                    let from = lookup(&r.from, layer).map_err(|e| rctx(format!("from: {e}")))?;
+                    let to = lookup(&r.to, layer).map_err(|e| rctx(format!("to: {e}")))?;
+                    let ramp = ramp(r, tolerance).map_err(rctx)?;
+                    let (restitution, friction) = wall_defaults(&Props::default());
+                    let rail = |side: &str, pts: &Vec<Vector>| Wall {
+                        id: Some(format!("{}.{side}_rail", spec.id)),
+                        layer,
+                        pts: pts.clone(),
+                        closed: false,
+                        restitution,
+                        friction,
+                        kick: 0.0,
+                        one_way: None,
+                    };
+                    if matches!(r.rails, Rails::Both | Rails::Left) {
+                        walls.push(rail("left", &ramp.left));
+                    }
+                    if matches!(r.rails, Rails::Both | Rails::Right) {
+                        walls.push(rail("right", &ramp.right));
+                    }
+                    let n = ramp.center.len();
+                    let tangent = |i: usize, j: usize| (ramp.center[j] - ramp.center[i]).normalize();
+                    // Entrance: two-way, so a weak shot rolls back onto `from`.
+                    transitions.push(Transition {
+                        id: Some(format!("{}.entrance", spec.id)),
+                        layer: from,
+                        a: ramp.left[0],
+                        b: ramp.right[0],
+                        direction: tangent(0, 1),
+                        target: layer,
+                        two_way: true,
+                    });
+                    // Exit: one-way, so balls under the ramp's end aren't lifted onto it.
+                    transitions.push(Transition {
+                        id: Some(format!("{}.exit", spec.id)),
+                        layer,
+                        a: ramp.left[n - 1],
+                        b: ramp.right[n - 1],
+                        direction: tangent(n - 2, n - 1),
+                        target: to,
+                        two_way: false,
+                    });
+                    for id in ["entrance", "exit"].map(|e| format!("{}.{e}", spec.id)) {
+                        claim(&id).map_err(rctx)?;
+                    }
+                    for rail in walls.iter().rev().take_while(|w| w.layer == layer) {
+                        claim(rail.id.as_deref().unwrap()).map_err(rctx)?;
+                    }
+                    Some(ramp)
+                }
+            };
+
             for (i, el) in spec.elements.iter().enumerate() {
                 let ctx = |e: String| lctx(format!("elements[{i}] ({}): {e}", el.kind()));
-                let id = match el {
-                    Element::Flipper(f) => f.id.clone(),
-                    _ => el.wall().unwrap().props().id.map(str::to_owned),
-                };
+                let id = el.id().map(str::to_owned);
                 if let Some(id) = &id {
                     claim(id).map_err(ctx)?;
                 }
-                match (el, el.wall()) {
-                    (Element::Flipper(f), _) => flippers.push(flipper(f, layer, tolerance).map_err(ctx)?),
-                    (_, Some(wall)) => {
+                match el {
+                    Element::Flipper(f) => flippers.push(flipper(f, layer, tolerance).map_err(ctx)?),
+                    Element::Switch(sw) => {
+                        switches.push(Switch { id, layer, shape: switch_shape(sw).map_err(ctx)? })
+                    }
+                    Element::Transition(t) => {
+                        let target = lookup(&t.target, layer).map_err(|e| ctx(format!("target: {e}")))?;
+                        let direction = v(t.direction);
+                        check(direction.length() > 0.0, || "direction is zero".into()).map_err(ctx)?;
+                        check(t.from != t.to, || "from and to are the same point".into()).map_err(ctx)?;
+                        let direction = direction.normalize();
+                        transitions.push(Transition {
+                            id,
+                            layer,
+                            a: v(t.from),
+                            b: v(t.to),
+                            direction,
+                            target,
+                            two_way: t.two_way,
+                        });
+                    }
+                    _ => {
+                        let wall = el.wall().unwrap();
                         let props = wall.props();
-                        let restitution =
-                            props.restitution.or(spec.defaults.restitution).unwrap_or(WALL_RESTITUTION);
-                        let friction = props.friction.or(spec.defaults.friction).unwrap_or(WALL_FRICTION);
+                        let (restitution, friction) = wall_defaults(&props);
                         check_coefficient("restitution", restitution).map_err(ctx)?;
                         check(friction >= 0.0, || "friction must be >= 0".into()).map_err(ctx)?;
+                        let kick = props.kick.unwrap_or(0.0);
+                        check(kick >= 0.0, || "kick must be >= 0".into()).map_err(ctx)?;
+                        let one_way = props.one_way.map(v);
+                        if let Some(d) = one_way {
+                            check(d.length() > 0.0, || "one_way is zero".into()).map_err(ctx)?;
+                        }
                         let (pts, closed) = wall.sample(tolerance).map_err(ctx)?;
-                        walls.push(Wall { id, layer, pts, closed, restitution, friction });
+                        walls.push(Wall {
+                            id,
+                            layer,
+                            pts,
+                            closed,
+                            restitution,
+                            friction,
+                            kick,
+                            one_way: one_way.map(|d| d.normalize()),
+                        });
                     }
-                    (_, None) => unreachable!("only flippers are not walls"),
                 }
             }
-            layers.push(LayerDef { name: spec.id, rolling_resistance: spec.rolling_resistance });
+            layers.push(LayerDef {
+                name: spec.id,
+                rolling_resistance: spec.rolling_resistance,
+                height: spec.height,
+                ramp,
+            });
         }
 
         Ok(Layout {
@@ -533,8 +766,80 @@ impl TableFile {
             layers,
             walls,
             flippers,
+            switches,
+            transitions,
         })
     }
+}
+
+fn switch_shape(sw: &SwitchSpec) -> Result<SensorShape, String> {
+    match (sw.center, sw.radius, sw.min, sw.max, sw.from, sw.to) {
+        (Some(c), Some(r), None, None, None, None) => {
+            check(r > 0.0, || "radius must be > 0".into())?;
+            Ok(SensorShape::Circle { center: v(c), radius: r })
+        }
+        (None, None, Some(min), Some(max), None, None) => {
+            check(min[0] < max[0] && min[1] < max[1], || "min must be below and left of max".into())?;
+            Ok(SensorShape::Rect { min: v(min), max: v(max) })
+        }
+        (None, None, None, None, Some(a), Some(b)) => {
+            check(a != b, || "from and to are the same point".into())?;
+            Ok(SensorShape::Segment { a: v(a), b: v(b) })
+        }
+        _ => Err("needs exactly one shape: center + radius, min + max, or from + to".into()),
+    }
+}
+
+/// Builds a ramp's track: a densely sampled centreline with heights, and its edges.
+fn ramp(r: &RampSpec, tolerance: f32) -> Result<Ramp, String> {
+    check(r.width > 0.0, || "width must be > 0".into())?;
+    check(!r.heights.is_empty(), || "heights is empty".into())?;
+    for w in r.heights.windows(2) {
+        check(w[0][0] < w[1][0], || "heights positions must increase".into())?;
+    }
+    check(r.heights.iter().all(|h| (0.0..=1.0).contains(&h[0]) && h[1] >= 0.0), || {
+        "heights must be [position 0..1, height >= 0] pairs".into()
+    })?;
+    let coarse = sample_path(v(r.center.start), &r.center.segments, tolerance).map_err(|e| format!("center: {e}"))?;
+
+    // Densify so the height profile and the rails follow the curve closely.
+    const MAX_STEP: f32 = 0.005;
+    let mut center = vec![coarse[0]];
+    for w in coarse.windows(2) {
+        let n = ((w[0].distance(w[1]) / MAX_STEP).ceil() as usize).max(1);
+        center.extend((1..=n).map(|k| w[0] + (w[1] - w[0]) * (k as f32 / n as f32)));
+    }
+    center.dedup_by(|a, b| a.distance(*b) < 1e-7);
+    check(center.len() >= 2, || "center has no length".into())?;
+
+    let mut along = vec![0.0];
+    for w in center.windows(2) {
+        along.push(along.last().unwrap() + w[0].distance(w[1]));
+    }
+    let total = *along.last().unwrap();
+    let height_at = |f: f32| {
+        let h = &r.heights;
+        if f <= h[0][0] {
+            return h[0][1];
+        }
+        for w in h.windows(2) {
+            if f <= w[1][0] {
+                return w[0][1] + (w[1][1] - w[0][1]) * (f - w[0][0]) / (w[1][0] - w[0][0]);
+            }
+        }
+        h[h.len() - 1][1]
+    };
+    let heights = along.iter().map(|s| height_at(s / total)).collect();
+
+    let m = center.len();
+    let (mut left, mut right) = (Vec::new(), Vec::new());
+    for k in 0..m {
+        let t = (center[(k + 1).min(m - 1)] - center[k.saturating_sub(1)]).normalize();
+        let normal = Vector::new(-t.y, t.x) * (r.width / 2.0);
+        left.push(center[k] + normal);
+        right.push(center[k] - normal);
+    }
+    Ok(Ramp { center, heights, left, right })
 }
 
 fn flipper(f: &Flipper, layer: Layer, tolerance: f32) -> Result<FlipperDef, String> {
@@ -546,8 +851,9 @@ fn flipper(f: &Flipper, layer: Layer, tolerance: f32) -> Result<FlipperDef, Stri
         let wall = curve.wall();
         let ctx = |e: String| format!("shape[{j}] ({}): {e}", wall.kind());
         // The id and physics settings belong on the flipper itself.
-        let bare = Props { id: None, restitution: None, friction: None };
-        check(wall.props() == bare, || "set id/restitution/friction on the flipper, not its outline".into())
+        check(wall.props() == Props::default(), || {
+            "set id/restitution/friction on the flipper, not its outline; kick and one_way don't apply".into()
+        })
             .map_err(ctx)?;
         outline.extend(wall.sample(tolerance).map_err(ctx)?.0);
     }
@@ -595,7 +901,7 @@ mod tests {
                 Radius::Circle(r) => (r, r),
                 Radius::Ellipse([a, b]) => (a, b),
             };
-            let arc = Arc { id: None, center: [0.0, 0.0], radius, start_deg: 10.0, end_deg: 190.0, rotation_deg: 0.0, restitution: None, friction: None };
+            let arc = Arc { id: None, center: [0.0, 0.0], radius, start_deg: 10.0, end_deg: 190.0, rotation_deg: 0.0, restitution: None, friction: None, kick: None, one_way: None };
             let (pts, _) = arc.sample(tol).unwrap();
             let truth = (0..=1000).map(|i| {
                 let t = (10.0 + 180.0 * i as f32 / 1000.0).to_radians();
@@ -608,7 +914,7 @@ mod tests {
 
     #[test]
     fn beziers_stay_within_tolerance_and_adapt() {
-        let curve = |points: Vec<P>| Bezier { id: None, points, restitution: None, friction: None };
+        let curve = |points: Vec<P>| Bezier { id: None, points, restitution: None, friction: None, kick: None, one_way: None };
         let gentle = curve(vec![[0.0, 0.0], [0.1, 0.01], [0.2, 0.01], [0.3, 0.0]]);
         let sharp = curve(vec![[0.0, 0.0], [0.0, 0.3], [0.3, 0.3], [0.3, 0.0]]);
         for b in [&gentle, &sharp] {

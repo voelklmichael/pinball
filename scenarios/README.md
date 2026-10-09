@@ -12,7 +12,7 @@ and can be watched in the game, playing exactly the same inputs:
 cargo run -p proto -- --scenario scenarios/launch_round_arch.json
 ```
 
-(R replays it, Esc quits.)
+(R replays it, Esc quits.) Most scenarios use small test tables (`tables/bench_*.json`) so each one tests a single element.
 
 Each test does two things:
 
@@ -64,7 +64,7 @@ When fixing a physics bug, first add a scenario that shows it, then fix it, so i
 
 ### Checks
 
-Events are written like trace lines without time and ball number: `"launch"`, `"touch outer_wall"`, `"leave left_flipper"`, `"flipper_up left_flipper"`, `"drain"`.
+Events are written like trace lines without time and ball number: `"launch"`, `"touch outer_wall"`, `"leave left_flipper"`, `"kick bumper"`, `"switch lane"`, `"cross loop.exit"` (a transition), `"flipper_up left_flipper"`, `"drain"`.
 
 | Check | Passes if |
 |---|---|
@@ -72,6 +72,6 @@ Events are written like trace lines without time and ball number: `"launch"`, `"
 | `{ "never": "drain" }` | the event never happens |
 | `{ "sequence": ["launch", "touch outer_wall", "drain"] }` | the events happen in this order; others may come in between |
 | `{ "enters": { "min": [x0, y0], "max": [x1, y1] }, "between": [0.2, 0.8] }` | a ball's centre gets into the rectangle (within the time window, if given) |
-| `{ "at_end": { "near": [x, y], "within": 0.01, "max_speed": 0.01 } }` | at the end, a ball is within `within` metres of `near` and slower than `max_speed` m/s |
+| `{ "at_end": { "near": [x, y], "within": 0.01, "max_speed": 0.01, "layer": "playfield" } }` | at the end, a ball is within `within` metres of `near`, slower than `max_speed` m/s (optional) and on `layer` (optional) |
 
 Prefer checks that describe the behaviour ("the ball goes over the top of the arch") over exact numbers; the snapshot already records the exact numbers.

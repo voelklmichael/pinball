@@ -1,0 +1,11 @@
+{
+  "description": "A ball falling onto a pop bumper is kicked back up the table.",
+  "table": "../tables/bench_kickers.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.10, 0.95] }],
+  "expect": [
+    {"sequence": ["touch bumper", "kick bumper"]},
+    {"enters": {"min": [0.0, 0.9], "max": [0.52, 1.0]}, "between": [0.35, 0.6]}
+  ]
+}

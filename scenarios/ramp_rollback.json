@@ -1,0 +1,12 @@
+{
+  "description": "A weak shot gets partway up the loop ramp, rolls back down and returns to the playfield at the entrance.",
+  "table": "../tables/bench_ramp.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.15, 0.10], "velocity": [0.0, 1.5] }],
+  "expect": [
+    {"sequence": ["cross loop.entrance", "cross loop.entrance"]},
+    {"never": "cross loop.exit"},
+    {"at_end": {"near": [0.15, 0.0135], "within": 0.01, "max_speed": 0.05, "layer": "playfield"}}
+  ]
+}

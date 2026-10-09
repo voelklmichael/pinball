@@ -1,0 +1,9 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A playfield ball passing under the loop ramp's exit is not lifted onto the ramp."
+input_file: scenarios/under_ramp_exit.json
+---
+  0.000  serve ball#1 at (0.450, 0.200)
+  0.458  touch ball#1 box
+  0.469  leave ball#1 box
+    end  ball#1 at (0.450, 0.509) v=(0.00, -1.63) on playfield

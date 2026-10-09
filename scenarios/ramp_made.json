@@ -1,0 +1,12 @@
+{
+  "description": "A strong shot climbs the loop ramp, goes round it and drops back onto the playfield at its exit.",
+  "table": "../tables/bench_ramp.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.15, 0.10], "velocity": [0.0, 3.5] }],
+  "expect": [
+    {"sequence": ["cross loop.entrance", "cross loop.exit"]},
+    {"enters": {"min": [0.2, 0.62], "max": [0.4, 0.75]}, "between": [0.1, 0.4]},
+    {"at_end": {"near": [0.25, 0.0135], "within": 0.3, "layer": "playfield"}}
+  ]
+}

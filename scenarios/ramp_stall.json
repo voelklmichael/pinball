@@ -1,0 +1,12 @@
+{
+  "description": "A ball that stalls on the ramp entrance line and rolls back ends up on the playfield, not stuck on the ramp layer.",
+  "table": "../tables/bench_ramp.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.15, 0.30], "velocity": [0.0, 0.05] }],
+  "expect": [
+    {"sequence": ["cross loop.entrance", "cross loop.entrance"]},
+    {"never": "cross loop.exit"},
+    {"at_end": {"near": [0.15, 0.0135], "within": 0.01, "max_speed": 0.05, "layer": "playfield"}}
+  ]
+}

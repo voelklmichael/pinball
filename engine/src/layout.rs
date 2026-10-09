@@ -29,6 +29,43 @@ pub struct LayerDef {
     /// Rolling resistance coefficient: while rolling on this layer the ball
     /// slows down by `rolling_resistance * gravity` (m/s²).
     pub rolling_resistance: f32,
+    /// Height above the playfield, for drawing. Ramps use their profile instead.
+    pub height: f32,
+    pub ramp: Option<Ramp>,
+}
+
+/// A ramp layer's track: a centreline with a height profile and its rails.
+pub struct Ramp {
+    /// Densely sampled centreline, from the entrance to the exit.
+    pub center: Vec<Vector>,
+    /// Height above the playfield at each centreline point.
+    pub heights: Vec<f32>,
+    /// The track's edges (where the rails are, if it has them).
+    pub left: Vec<Vector>,
+    pub right: Vec<Vector>,
+}
+
+impl Ramp {
+    /// Height, uphill unit tangent and slope (dh/ds along the tangent) at the
+    /// centreline point nearest to `p`.
+    pub fn sample(&self, p: Vector) -> (f32, Vector, f32) {
+        let mut best = (f32::MAX, 0.0, Vector::Y, 0.0);
+        for i in 0..self.center.len() - 1 {
+            let (a, b) = (self.center[i], self.center[i + 1]);
+            let ab = b - a;
+            let len = ab.length();
+            if len < 1e-9 {
+                continue;
+            }
+            let t = ((p - a).dot(ab) / (len * len)).clamp(0.0, 1.0);
+            let d = (a + ab * t).distance_squared(p);
+            if d < best.0 {
+                let (ha, hb) = (self.heights[i], self.heights[i + 1]);
+                best = (d, ha + (hb - ha) * t, ab / len, (hb - ha) / len);
+            }
+        }
+        (best.1, best.2, best.3)
+    }
 }
 
 pub struct Wall {
@@ -41,6 +78,50 @@ pub struct Wall {
     pub restitution: f32,
     /// Friction along the wall.
     pub friction: f32,
+    /// Active element (pop bumper, slingshot): on contact the ball is pushed
+    /// away from the wall at this speed (m/s); 0 for a plain wall.
+    pub kick: f32,
+    /// One-way gate: balls moving in this direction pass through.
+    pub one_way: Option<Vector>,
+}
+
+/// Where a switch detects the ball (its centre's shape is irrelevant: the
+/// switch fires as soon as the ball overlaps it).
+#[derive(Clone, Copy)]
+pub enum SensorShape {
+    Circle { center: Vector, radius: f32 },
+    Rect { min: Vector, max: Vector },
+    Segment { a: Vector, b: Vector },
+}
+
+/// Doesn't block the ball; reports when a ball rolls over it (rollover lanes,
+/// spinners, optos).
+pub struct Switch {
+    pub id: Option<String>,
+    pub layer: Layer,
+    pub shape: SensorShape,
+}
+
+/// A line that moves balls between layers. A ball on `layer` that crosses
+/// from `a`-`b` in `direction` ends up on `target`. If `two_way`, a ball on
+/// `target` crossing back returns to `layer` (ramp entrances, where a weak
+/// shot rolls back); otherwise only balls on `layer` are affected (ramp exits,
+/// holes).
+pub struct Transition {
+    pub id: Option<String>,
+    pub layer: Layer,
+    pub a: Vector,
+    pub b: Vector,
+    pub direction: Vector,
+    pub target: Layer,
+    pub two_way: bool,
+}
+
+impl Transition {
+    /// True if `p` is on the `target` side of the line.
+    pub fn beyond(&self, p: Vector) -> bool {
+        (p - self.a).dot(self.direction) > 0.0
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -96,4 +177,12 @@ pub struct Layout {
     pub layers: Vec<LayerDef>,
     pub walls: Vec<Wall>,
     pub flippers: Vec<FlipperDef>,
+    pub switches: Vec<Switch>,
+    pub transitions: Vec<Transition>,
+}
+
+impl Layout {
+    pub fn layer_name(&self, layer: Layer) -> &str {
+        &self.layers[layer.index()].name
+    }
 }

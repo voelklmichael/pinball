@@ -1,0 +1,11 @@
+{
+  "description": "A ball falling onto a slingshot is kicked away from it, up and to the right.",
+  "table": "../tables/bench_kickers.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.34, 0.70] }],
+  "expect": [
+    {"event": "kick sling", "between": [0.4, 0.6]},
+    {"enters": {"min": [0.42, 0.42], "max": [0.52, 0.8]}, "between": [0.5, 0.8]}
+  ]
+}

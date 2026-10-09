@@ -39,14 +39,34 @@ Unknown fields are errors, so a typo is reported instead of silently ignored.
 
 ## Layers
 
-A layer is a surface the ball rolls on: the playfield, a ramp, an upper level. A ball only touches the elements on its own layer, so ramps can pass over the playfield and over each other. (Moving the ball between layers comes with ramps; for now only the first layer is played on.)
+A layer is a surface the ball rolls on: the playfield, a ramp, an upper level. A ball only touches the elements on its own layer, so ramps can pass over the playfield and over each other. Balls move between layers at transitions (see below); a ramp layer creates its own.
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
 | `id` | yes | | Name of the layer. Shares one namespace with element ids |
 | `rolling_resistance` | no | `0.01` | The ball slows down by `rolling_resistance × gravity` while rolling on this layer. Wire ramps can differ from plastic or wood |
 | `defaults` | no | | `{ "restitution": …, "friction": … }` for walls on this layer that don't set their own |
-| `elements` | yes | | Walls and flippers on this layer |
+| `height` | no | `0` | Height above the playfield, e.g. `0.065` for an upper level (used for drawing) |
+| `ramp` | no | | Makes the layer a ramp, see below |
+| `elements` | no | `[]` | Walls, flippers, switches and transitions on this layer |
+
+### Ramps
+
+A layer with a `ramp` is a raised track. It generates its rails, its slope (the ball slows down climbing and speeds up coming down) and two transitions:
+
+- `<id>.entrance` on the `from` layer, **two-way**: a weak shot that rolls back returns to `from`.
+- `<id>.exit`, **one-way**: the ball lands on `to`; balls passing under the ramp's end are not lifted onto it.
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `center` | yes | | Centreline from entrance to exit: `{ "start": [x, y], "segments": [...] }`, segments as in `path` |
+| `width` | yes | | Width between the rails (a ball is 0.027) |
+| `heights` | yes | | `[position, height]` pairs: position along the centreline from 0 (entrance) to 1 (exit), height in metres. Linear in between |
+| `from` | yes | | Layer the entrance is on |
+| `to` | yes | | Layer the ball lands on at the exit |
+| `rails` | no | `"both"` | `"both"`, `"left"`, `"right"` or `"none"` (left/right as seen walking up the ramp). Rails are named `<id>.left_rail` / `<id>.right_rail` and use the layer's `defaults` |
+
+Example: [bench_ramp.json](bench_ramp.json) has a loop ramp, a lift ramp to an upper level, and a hole back down.
 
 At most 32 layers.
 
@@ -59,6 +79,10 @@ Every wall has `type`, its geometry, and optionally:
 | `id` | none | Name the rules refer to it by, e.g. `"left_ramp"`. Must be unique in the table |
 | `restitution` | layer default, else `0.35` | Bounce, 0 to 1 |
 | `friction` | layer default, else `0.075` | Friction along the wall |
+| `kick` | none | Active element: on contact the ball is pushed away from the wall at this speed (m/s). A closed `arc` with `kick` is a pop bumper (or a pin between the flippers), a `line` with `kick` a slingshot |
+| `one_way` | none | `[dx, dy]`: a gate. Balls moving in this direction pass through, others bounce |
+
+A wall with an `id` is also a standup target: touching it is an event the rules can react to.
 
 | `type` | Fields |
 |---|---|
@@ -77,6 +101,31 @@ Every wall has `type`, its geometry, and optionally:
 | `{ "bezier": [[c1x, c1y], [c2x, c2y], [x, y]] }` | Cubic Bézier: two control points, then the end point |
 
 Example: the outer wall of [simple.json](simple.json) is one path, from the left flipper guide up, around the top arch and down to the right flipper guide.
+
+## Switch
+
+Doesn't block the ball; reports when a ball rolls over it (rollover lanes, spinners). Give exactly one shape:
+
+| Field | Meaning |
+|---|---|
+| `id` | Name of the switch |
+| `center` + `radius` | A circle |
+| `min` + `max` | A rectangle |
+| `from` + `to` | A line |
+
+## Transition
+
+A line that moves balls between layers, e.g. a hole in an upper level. A ball on this layer that crosses the line from `from` to `to` in `direction` moves to `target`.
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `id` | no | | Name |
+| `from`, `to` | yes | | The line |
+| `direction` | yes | | `[dx, dy]`, which way leads to `target` |
+| `target` | yes | | Layer id |
+| `two_way` | no | `false` | Balls on `target` crossing back return to this layer |
+
+The layer is decided when the ball has crossed the line, by which side its centre is on, so a ball that stops on the line and rolls back stays where it was.
 
 ## Flipper
 

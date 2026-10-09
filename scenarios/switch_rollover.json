@@ -1,0 +1,12 @@
+{
+  "description": "A ball rolling over a switch triggers it without being slowed or deflected.",
+  "table": "../tables/bench_kickers.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.22, 0.80] }],
+  "expect": [
+    {"event": "switch lane", "between": [0.3, 0.5]},
+    {"at_end": {"near": [0.22, 0.0135], "within": 0.06, "max_speed": 0.5}},
+    {"never": "kick bumper"}
+  ]
+}

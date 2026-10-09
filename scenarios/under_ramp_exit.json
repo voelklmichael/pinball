@@ -1,0 +1,12 @@
+{
+  "description": "A playfield ball passing under the loop ramp's exit is not lifted onto the ramp.",
+  "table": "../tables/bench_ramp.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.45, 0.20], "velocity": [0.0, 2.5] }],
+  "expect": [
+    {"never": "cross loop.exit"},
+    {"never": "cross loop.entrance"},
+    {"enters": {"min": [0.42, 0.6], "max": [0.48, 1.07]}, "between": [0.1, 0.5]}
+  ]
+}

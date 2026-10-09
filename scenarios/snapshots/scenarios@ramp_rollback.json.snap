@@ -1,0 +1,14 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A weak shot gets partway up the loop ramp, rolls back down and returns to the playfield at the entrance."
+input_file: scenarios/ramp_rollback.json
+---
+  0.000  serve ball#1 at (0.150, 0.100)
+  0.146  cross ball#1 loop.entrance: playfield -> loop
+  0.481  cross ball#1 loop.entrance: loop -> playfield
+  0.729  touch ball#1 box
+  0.744  leave ball#1 box
+  1.090  touch ball#1 box
+  1.119  leave ball#1 box
+  1.190  touch ball#1 box
+    end  ball#1 at (0.150, 0.013) v=(0.00, 0.00) on playfield

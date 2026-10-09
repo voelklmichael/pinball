@@ -3,7 +3,7 @@
 
 use macroquad::prelude::*;
 
-use engine::layout::Layer;
+use engine::layout::{Layer, SensorShape};
 use engine::physics::Table;
 
 type PVec = engine::rapier2d::math::Vector;
@@ -58,9 +58,14 @@ fn fill_convex(pts: &[Vec2], color: Color) {
     }
 }
 
-fn draw_ball(view: &View, pos: PVec, radius: f32) {
-    let r = radius * view.scale;
+/// Higher balls are drawn bigger, with a shadow, as a stand-in for the 2.5D view.
+fn draw_ball(view: &View, pos: PVec, radius: f32, height: f32) {
+    let r = radius * view.scale * (1.0 + height * 4.0);
     let c = view.p(pos);
+    if height > 0.0 {
+        let off = height * view.scale * 0.4;
+        draw_circle(c.x + off, c.y + off, r, Color::new(0.0, 0.0, 0.0, 0.35));
+    }
     draw_circle(c.x, c.y, r, LIGHTGRAY);
     draw_circle(c.x - 0.3 * r, c.y - 0.3 * r, 0.35 * r, WHITE);
 }
@@ -75,11 +80,43 @@ pub fn draw(table: &Table, status: &str, message: Option<&str>) {
     let top_left = view.p(PVec::new(0.0, size.y));
     draw_rectangle(top_left.x, top_left.y, size.x * view.scale, size.y * view.scale, Color::from_rgba(24, 40, 64, 255));
 
-    for i in 0..layout.layers.len() {
+    for (i, def) in layout.layers.iter().enumerate() {
         let layer = Layer(i as u8);
+        let col = layer_color(layer);
+        if let Some(ramp) = &def.ramp {
+            let fill = Color::new(col.r, col.g, col.b, 0.18);
+            for k in 0..ramp.center.len() - 1 {
+                let (a, b) = (view.p(ramp.left[k]), view.p(ramp.left[k + 1]));
+                let (c, d) = (view.p(ramp.right[k + 1]), view.p(ramp.right[k]));
+                draw_triangle(a, b, c, fill);
+                draw_triangle(a, c, d, fill);
+            }
+        }
         let width = if layer == Layer::PLAYFIELD { 0.004 } else { 0.0035 };
         for w in layout.walls.iter().filter(|w| w.layer == layer) {
-            polyline(&view, &w.pts, w.closed, view.px(width), layer_color(layer));
+            let color = match (w.kick > 0.0, w.one_way.is_some()) {
+                (true, _) => Color::from_rgba(230, 70, 90, 255),
+                (_, true) => Color::from_rgba(255, 160, 0, 255),
+                _ => col,
+            };
+            polyline(&view, &w.pts, w.closed, view.px(width), color);
+        }
+        for sw in layout.switches.iter().filter(|s| s.layer == layer) {
+            let yellow = Color::from_rgba(255, 220, 60, 200);
+            match sw.shape {
+                SensorShape::Circle { center, radius } => {
+                    let c = view.p(center);
+                    draw_circle_lines(c.x, c.y, radius * view.scale, 1.5, yellow);
+                }
+                SensorShape::Rect { min, max } => {
+                    let corners = [min, PVec::new(max.x, min.y), max, PVec::new(min.x, max.y)];
+                    polyline(&view, &corners, true, 1.5, yellow);
+                }
+                SensorShape::Segment { a, b } => polyline(&view, &[a, b], false, 1.5, yellow),
+            }
+        }
+        for t in layout.transitions.iter().filter(|t| t.layer == layer) {
+            polyline(&view, &[t.a, t.b], false, 1.0, Color::from_rgba(80, 220, 230, 160));
         }
         for f in table.flippers.iter().filter(|f| f.def.layer == layer) {
             let pose = table.flipper_pose(f);
@@ -87,7 +124,7 @@ pub fn draw(table: &Table, status: &str, message: Option<&str>) {
             fill_convex(&pts, ORANGE);
         }
         for b in table.balls.iter().filter(|b| b.layer == layer) {
-            draw_ball(&view, table.ball_pos(b), layout.ball.radius);
+            draw_ball(&view, table.ball_pos(b), layout.ball.radius, b.height);
         }
     }
 

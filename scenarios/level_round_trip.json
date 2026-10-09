@@ -1,0 +1,11 @@
+{
+  "description": "A shot up the lift ramp reaches the upper level, rolls along it and drops back to the playfield through the hole.",
+  "table": "../tables/bench_ramp.json",
+  "duration": 3.0,
+  "serve": false,
+  "balls": [{ "position": [0.05, 0.10], "velocity": [0.0, 3.5] }],
+  "expect": [
+    {"sequence": ["cross lift.entrance", "cross lift.exit", "touch upper_floor", "cross upper_hole"]},
+    {"at_end": {"near": [0.45, 0.05], "within": 0.1, "layer": "playfield"}}
+  ]
+}

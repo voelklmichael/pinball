@@ -20,4 +20,4 @@ input_file: scenarios/flipper_hit.json
   1.215  leave ball#1 outer_wall
   1.271  touch ball#1 outer_wall
   1.290  leave ball#1 outer_wall
-    end  ball#1 at (0.480, 0.546) v=(-0.11, -1.59)
+    end  ball#1 at (0.480, 0.546) v=(-0.11, -1.59) on playfield

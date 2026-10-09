@@ -1,0 +1,26 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A strong shot climbs the loop ramp, goes round it and drops back onto the playfield at its exit."
+input_file: scenarios/ramp_made.json
+---
+  0.000  serve ball#1 at (0.150, 0.100)
+  0.058  cross ball#1 loop.entrance: playfield -> loop
+  0.165  touch ball#1 loop.left_rail
+  0.169  leave ball#1 loop.left_rail
+  0.185  touch ball#1 loop.left_rail
+  0.210  leave ball#1 loop.left_rail
+  0.242  touch ball#1 loop.left_rail
+  0.250  leave ball#1 loop.left_rail
+  0.279  touch ball#1 loop.left_rail
+  0.294  leave ball#1 loop.left_rail
+  0.342  touch ball#1 loop.left_rail
+  0.354  leave ball#1 loop.left_rail
+  0.381  touch ball#1 loop.left_rail
+  0.406  leave ball#1 loop.left_rail
+  0.502  cross ball#1 loop.exit: loop -> playfield
+  0.631  touch ball#1 box
+  0.635  leave ball#1 box
+  1.288  touch ball#1 box
+  1.296  leave ball#1 box
+  1.479  touch ball#1 box
+    end  ball#1 at (0.022, 0.013) v=(-0.21, 0.00) on playfield

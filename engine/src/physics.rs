@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use rapier2d::prelude::*;
 
-use crate::layout::{Button, FlipperDef, Layer, Layout};
+use crate::layout::{Button, FlipperDef, Layer, Layout, SensorShape};
 
 pub const PHYSICS_HZ: f32 = 480.0;
 const DRAIN_Y: f32 = -0.03;
@@ -15,13 +15,15 @@ const DRAIN_Y: f32 = -0.03;
 /// touching, so a ball rolling along a wall doesn't flicker touch/leave.
 const LEAVE_DEBOUNCE_STEPS: u64 = 5;
 
-/// Something a ball can touch: an index into the layout's walls or flippers,
-/// or another ball's number.
+/// Something a ball can touch: an index into the layout's walls, flippers,
+/// switches or transitions, or another ball's number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Thing {
     Wall(usize),
     Flipper(usize),
     Ball(u32),
+    Switch(usize),
+    Transition(usize),
 }
 
 /// Balls are numbered from 1 in the order they enter play.
@@ -31,6 +33,13 @@ pub enum Event {
     Launch { ball: u32, vel: Vector },
     Touch { ball: u32, thing: Thing },
     Leave { ball: u32, thing: Thing },
+    /// A kicking wall (pop bumper, slingshot) pushed the ball away.
+    Kick { ball: u32, thing: Thing },
+    /// The ball rolled over a switch.
+    Switch { ball: u32, switch: usize },
+    /// The ball crossed a transition onto another layer (onto or off a ramp,
+    /// a level, ...).
+    Cross { ball: u32, transition: usize, from: Layer, to: Layer },
     FlipperUp { flipper: usize },
     FlipperDown { flipper: usize },
     /// The ball left the bottom of the table.
@@ -55,6 +64,8 @@ pub struct Ball {
     pub body: RigidBodyHandle,
     collider: ColliderHandle,
     pub layer: Layer,
+    /// Height above the playfield, for drawing.
+    pub height: f32,
     /// Frozen at the launch position until the launch key fires it.
     pub waiting: bool,
 }
@@ -79,6 +90,27 @@ fn layer_groups(layer: Layer) -> InteractionGroups {
     groups(layer.bit(), u32::MAX)
 }
 
+/// Lets balls through one-way walls when they move in the wall's direction.
+struct GateHooks {
+    gates: HashMap<ColliderHandle, Vector>,
+}
+
+impl PhysicsHooks for GateHooks {
+    fn modify_solver_contacts(&self, ctx: &mut ContactModificationContext) {
+        let (pass, ball) = match (self.gates.get(&ctx.collider1), self.gates.get(&ctx.collider2)) {
+            (Some(&pass), None) => (pass, ctx.rigid_body2),
+            (None, Some(&pass)) => (pass, ctx.rigid_body1),
+            _ => return,
+        };
+        let Some(ball) = ball else { return };
+        if ctx.bodies[ball].linvel().dot(pass) > 0.0
+            && let Some(m) = ctx.rigid_mut()
+        {
+            m.solver_contacts.clear();
+        }
+    }
+}
+
 #[derive(Default)]
 struct Collector(Mutex<Vec<CollisionEvent>>);
 
@@ -94,6 +126,7 @@ impl EventHandler for Collector {
 
 pub struct Table {
     world: PhysicsWorld,
+    hooks: GateHooks,
     collector: Collector,
     pub layout: Layout,
     pub balls: Vec<Ball>,
@@ -123,20 +156,51 @@ impl Table {
         world.integration_parameters.length_unit = 0.05;
 
         let mut things = HashMap::new();
+        let mut hooks = GateHooks { gates: HashMap::new() };
         let ground = world.insert_body(RigidBodyBuilder::fixed());
         for (i, w) in layout.walls.iter().enumerate() {
             let mut pts = w.pts.clone();
             if w.closed {
                 pts.push(pts[0]);
             }
+            let mut builder = ColliderBuilder::polyline(pts, None)
+                .restitution(w.restitution)
+                .friction(w.friction)
+                .collision_groups(layer_groups(w.layer));
+            if w.one_way.is_some() {
+                builder = builder.active_hooks(ActiveHooks::MODIFY_SOLVER_CONTACTS);
+            }
+            let h = world.insert_collider(builder, Some(ground));
+            things.insert(h, Thing::Wall(i));
+            if let Some(pass) = w.one_way {
+                hooks.gates.insert(h, pass);
+            }
+        }
+
+        // Switches and transitions are sensors: they report the ball but don't block it.
+        let sensor = |shape: SensorShape| match shape {
+            SensorShape::Circle { center, radius } => ColliderBuilder::ball(radius).translation(center),
+            SensorShape::Rect { min, max } => {
+                let half = (max - min) / 2.0;
+                ColliderBuilder::cuboid(half.x, half.y).translation(min + half)
+            }
+            SensorShape::Segment { a, b } => ColliderBuilder::segment(a, b),
+        };
+        for (i, sw) in layout.switches.iter().enumerate() {
             let h = world.insert_collider(
-                ColliderBuilder::polyline(pts, None)
-                    .restitution(w.restitution)
-                    .friction(w.friction)
-                    .collision_groups(layer_groups(w.layer)),
+                sensor(sw.shape).sensor(true).collision_groups(layer_groups(sw.layer)),
                 Some(ground),
             );
-            things.insert(h, Thing::Wall(i));
+            things.insert(h, Thing::Switch(i));
+        }
+        for (i, t) in layout.transitions.iter().enumerate() {
+            // Two-way lines also see balls on the target layer, so they can bring them back.
+            let layers = if t.two_way { t.layer.bit() | t.target.bit() } else { t.layer.bit() };
+            let h = world.insert_collider(
+                sensor(SensorShape::Segment { a: t.a, b: t.b }).sensor(true).collision_groups(groups(layers, u32::MAX)),
+                Some(ground),
+            );
+            things.insert(h, Thing::Transition(i));
         }
 
         let mut flippers = Vec::new();
@@ -148,14 +212,17 @@ impl Table {
 
         let layer_names: Vec<&str> = layout.layers.iter().map(|l| l.name.as_str()).collect();
         log::info!(
-            "table \"{}\": layers [{}], {} walls, {} flippers",
+            "table \"{}\": layers [{}], {} walls, {} flippers, {} switches, {} transitions",
             layout.name,
             layer_names.join(", "),
             layout.walls.len(),
-            layout.flippers.len()
+            layout.flippers.len(),
+            layout.switches.len(),
+            layout.transitions.len()
         );
         Self {
             world,
+            hooks,
             collector: Collector::default(),
             layout,
             balls: Vec::new(),
@@ -223,7 +290,7 @@ impl Table {
         );
         let number = self.next_ball;
         self.next_ball += 1;
-        let mut ball = Ball { number, body, collider, layer: Layer::PLAYFIELD, waiting: false };
+        let mut ball = Ball { number, body, collider, layer: Layer::PLAYFIELD, height: 0.0, waiting: false };
         set_layer(&mut self.world, &mut ball, Layer::PLAYFIELD);
         self.balls.push(ball);
         self.pending.push(Timed { step: self.steps, event: Event::Serve { ball: number, pos } });
@@ -274,20 +341,29 @@ impl Table {
             self.world.bodies[f.body].set_next_kinematic_position(Pose::new(f.def.pivot, f.angle));
         }
 
-        // Rolling resistance: a constant slowdown that never reverses the ball.
         let g = self.layout.gravity;
-        for b in self.balls.iter().filter(|b| !b.waiting) {
+        for b in self.balls.iter_mut().filter(|b| !b.waiting) {
             let body = &mut self.world.bodies[b.body];
+            let layer = &self.layout.layers[b.layer.index()];
             let mut v = body.linvel();
+            // Ramps: gravity along the slope, on top of the table tilt.
+            b.height = match &layer.ramp {
+                Some(ramp) => {
+                    let (h, tangent, slope) = ramp.sample(body.translation());
+                    v -= tangent * (g * slope * dt);
+                    h
+                }
+                None => layer.height,
+            };
+            // Rolling resistance: a constant slowdown that never reverses the ball.
             let speed = v.length();
             if speed > 0.0 {
-                let rr = self.layout.layers[b.layer.index()].rolling_resistance;
-                v *= (speed - rr * g * dt).max(0.0) / speed;
-                body.set_linvel(v, true);
+                v *= (speed - layer.rolling_resistance * g * dt).max(0.0) / speed;
             }
+            body.set_linvel(v, true);
         }
 
-        self.world.step_with_events(&(), &self.collector);
+        self.world.step_with_events(&self.hooks, &self.collector);
         self.steps += 1;
 
         let mut events = std::mem::take(&mut self.pending);
@@ -321,11 +397,25 @@ impl Table {
                 },
                 (None, None) => continue,
             };
+            if let Thing::Transition(t) = thing {
+                self.cross(ball, t, started, events);
+                continue;
+            }
             let key = (ball, thing);
             if started {
                 // Touching again within the debounce time continues the old contact.
                 if self.leaving.remove(&key).is_none() && self.touching.insert(key) {
-                    events.push(Timed { step: self.steps, event: Event::Touch { ball, thing } });
+                    let event = match thing {
+                        Thing::Switch(switch) => Event::Switch { ball, switch },
+                        _ => Event::Touch { ball, thing },
+                    };
+                    events.push(Timed { step: self.steps, event });
+                    if let Thing::Wall(w) = thing
+                        && self.layout.walls[w].kick > 0.0
+                    {
+                        self.kick(ball, w);
+                        events.push(Timed { step: self.steps, event: Event::Kick { ball, thing } });
+                    }
                 }
             } else if self.touching.contains(&key) {
                 self.leaving.insert(key, self.steps);
@@ -337,8 +427,59 @@ impl Table {
         for ((ball, thing), at) in done {
             self.leaving.remove(&(ball, thing));
             self.touching.remove(&(ball, thing));
-            events.push(Timed { step: at, event: Event::Leave { ball, thing } });
+            if !matches!(thing, Thing::Switch(_)) {
+                events.push(Timed { step: at, event: Event::Leave { ball, thing } });
+            }
         }
+    }
+
+    /// A ball started or stopped overlapping transition `t`. Two-way lines
+    /// decide by the direction of travel when the ball arrives, so the ball is
+    /// on the right layer while it crosses, and every line decides by the side
+    /// the ball's centre is on when it leaves. That also catches a ball that
+    /// stalls on the line and rolls back.
+    fn cross(&mut self, number: u32, t: usize, started: bool, events: &mut Vec<Timed>) {
+        let tr = &self.layout.transitions[t];
+        let Some(b) = self.balls.iter().position(|b| b.number == number) else { return };
+        let body = &self.world.bodies[self.balls[b].body];
+        let to = if started {
+            if !tr.two_way {
+                return;
+            }
+            if body.linvel().dot(tr.direction) >= 0.0 { tr.target } else { tr.layer }
+        } else if tr.beyond(body.translation()) {
+            tr.target
+        } else {
+            tr.layer
+        };
+        let from = self.balls[b].layer;
+        // A one-way line only acts on balls coming from its own layer.
+        if to != from && (tr.two_way || from == tr.layer) {
+            set_layer(&mut self.world, &mut self.balls[b], to);
+            events.push(Timed { step: self.steps, event: Event::Cross { ball: number, transition: t, from, to } });
+        }
+    }
+
+    /// Pushes the ball away from the nearest point of wall `w` at its kick speed,
+    /// keeping its speed along the wall.
+    fn kick(&mut self, number: u32, w: usize) {
+        let wall = &self.layout.walls[w];
+        let Some(b) = self.balls.iter().find(|b| b.number == number) else { return };
+        let body = &mut self.world.bodies[b.body];
+        let p = body.translation();
+        let n = wall.pts.len();
+        let segs = if wall.closed { n } else { n - 1 };
+        let nearest = (0..segs)
+            .map(|i| {
+                let (a, c) = (wall.pts[i], wall.pts[(i + 1) % n]);
+                let ac = c - a;
+                a + ac * ((p - a).dot(ac) / ac.length_squared().max(1e-12)).clamp(0.0, 1.0)
+            })
+            .min_by(|x, y| x.distance_squared(p).total_cmp(&y.distance_squared(p)))
+            .unwrap();
+        let away = (p - nearest).normalize_or_zero();
+        let v = body.linvel();
+        body.set_linvel(v - away * v.dot(away) + away * wall.kick, true);
     }
 
     fn drains(&mut self, events: &mut Vec<Timed>) {
@@ -366,6 +507,10 @@ impl Table {
             Thing::Wall(i) => self.layout.walls[i].id.clone().unwrap_or_else(|| format!("wall#{i}")),
             Thing::Flipper(i) => self.layout.flippers[i].id.clone().unwrap_or_else(|| format!("flipper#{i}")),
             Thing::Ball(n) => format!("ball#{n}"),
+            Thing::Switch(i) => self.layout.switches[i].id.clone().unwrap_or_else(|| format!("switch#{i}")),
+            Thing::Transition(i) => {
+                self.layout.transitions[i].id.clone().unwrap_or_else(|| format!("transition#{i}"))
+            }
         }
     }
 
@@ -377,6 +522,14 @@ impl Table {
             Event::Launch { ball, vel } => format!("launch ball#{ball} v=({:.2}, {:.2})", vel.x, vel.y),
             Event::Touch { ball, thing } => format!("touch ball#{ball} {}", self.name(thing)),
             Event::Leave { ball, thing } => format!("leave ball#{ball} {}", self.name(thing)),
+            Event::Kick { ball, thing } => format!("kick ball#{ball} {}", self.name(thing)),
+            Event::Switch { ball, switch } => format!("switch ball#{ball} {}", self.name(Thing::Switch(switch))),
+            Event::Cross { ball, transition, from, to } => format!(
+                "cross ball#{ball} {}: {} -> {}",
+                self.name(Thing::Transition(transition)),
+                self.layout.layer_name(from),
+                self.layout.layer_name(to)
+            ),
             Event::FlipperUp { flipper } => format!("flipper_up {}", self.name(Thing::Flipper(flipper))),
             Event::FlipperDown { flipper } => format!("flipper_down {}", self.name(Thing::Flipper(flipper))),
             Event::Drain { ball } => format!("drain ball#{ball}"),
@@ -385,9 +538,11 @@ impl Table {
 
     fn log(&self, e: &Timed) {
         let level = match e.event {
-            Event::Touch { .. } | Event::Leave { .. } | Event::FlipperUp { .. } | Event::FlipperDown { .. } => {
-                log::Level::Debug
-            }
+            Event::Touch { .. }
+            | Event::Leave { .. }
+            | Event::Kick { .. }
+            | Event::FlipperUp { .. }
+            | Event::FlipperDown { .. } => log::Level::Debug,
             _ => log::Level::Info,
         };
         log::log!(level, "{:8.3}s {}", e.time(), self.describe(&e.event));

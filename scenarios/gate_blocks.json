@@ -1,0 +1,11 @@
+{
+  "description": "A ball falling onto a one-way gate from the closed side comes to rest on it.",
+  "table": "../tables/bench_kickers.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.47, 0.80] }],
+  "expect": [
+    {"event": "touch gate"},
+    {"at_end": {"near": [0.47, 0.6135], "within": 0.005, "max_speed": 0.01}}
+  ]
+}

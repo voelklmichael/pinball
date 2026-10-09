@@ -1,0 +1,22 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A shot up the lift ramp reaches the upper level, rolls along it and drops back to the playfield through the hole."
+input_file: scenarios/level_round_trip.json
+---
+  0.000  serve ball#1 at (0.050, 0.100)
+  0.015  cross ball#1 lift.entrance: playfield -> lift
+  0.273  cross ball#1 lift.exit: lift -> upper
+  0.342  touch ball#1 upper_wall
+  0.352  leave ball#1 upper_wall
+  0.504  touch ball#1 upper_gate
+  0.506  leave ball#1 upper_gate
+  0.752  touch ball#1 upper_gate
+  0.754  leave ball#1 upper_gate
+  0.812  touch ball#1 upper_floor
+  2.075  leave ball#1 upper_floor
+  2.188  cross ball#1 upper_hole: upper -> playfield
+  2.460  touch ball#1 box
+  2.475  leave ball#1 box
+  2.890  touch ball#1 box
+  2.898  leave ball#1 box
+    end  ball#1 at (0.481, 0.063) v=(0.05, 0.32) on playfield

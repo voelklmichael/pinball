@@ -1,0 +1,12 @@
+---
+source: scenario/tests/scenarios.rs
+description: A ball falling onto a one-way gate from the closed side comes to rest on it.
+input_file: scenarios/gate_blocks.json
+---
+  0.000  serve ball#1 at (0.470, 0.800)
+  0.406  touch ball#1 gate
+  0.408  leave ball#1 gate
+  0.627  touch ball#1 gate
+  0.631  leave ball#1 gate
+  0.675  touch ball#1 gate
+    end  ball#1 at (0.470, 0.613) v=(0.00, 0.00) on playfield

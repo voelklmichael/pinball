@@ -11,4 +11,4 @@ input_file: scenarios/cradle.json
   0.575  touch ball#1 outer_wall
   0.594  leave ball#1 outer_wall
   0.652  touch ball#1 outer_wall
-    end  ball#1 at (0.163, 0.163) v=(0.00, -0.00)
+    end  ball#1 at (0.163, 0.163) v=(0.00, -0.00) on playfield

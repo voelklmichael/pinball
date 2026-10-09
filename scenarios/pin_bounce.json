@@ -1,0 +1,11 @@
+{
+  "description": "A ball falling onto the pin between the flippers bounces back up.",
+  "table": "../tables/bench_kickers.json",
+  "duration": 1.2,
+  "serve": false,
+  "balls": [{ "position": [0.26, 0.40] }],
+  "expect": [
+    {"sequence": ["touch center_pin", "kick center_pin"]},
+    {"enters": {"min": [0.2, 0.25], "max": [0.32, 0.5]}, "between": [0.55, 1.2]}
+  ]
+}

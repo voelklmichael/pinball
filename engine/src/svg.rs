@@ -5,7 +5,7 @@ use std::fmt::Write;
 
 use rapier2d::math::{Pose, Vector};
 
-use crate::layout::{Layer, Layout};
+use crate::layout::{Layer, Layout, SensorShape};
 
 const SCALE: f32 = 1000.0; // px per metre
 
@@ -45,9 +45,36 @@ pub fn render(layout: &Layout, traces: &[(Vec<Vector>, &str)]) -> String {
     )
     .unwrap();
 
+    for (i, def) in layout.layers.iter().enumerate() {
+        if let Some(ramp) = &def.ramp {
+            let mut outline = ramp.left.clone();
+            outline.extend(ramp.right.iter().rev());
+            let c = layer_color(Layer(i as u8));
+            poly(&mut s, top, &outline, true, &format!("fill:{c};fill-opacity:0.15;stroke:none"));
+        }
+    }
     for w in &layout.walls {
         let width = if w.layer == Layer::PLAYFIELD { 3 } else { 2 };
-        poly(&mut s, top, &w.pts, w.closed, &format!("stroke:{};stroke-width:{width}", layer_color(w.layer)));
+        let color = match (w.kick > 0.0, w.one_way.is_some()) {
+            (true, _) => "#e6465a",
+            (_, true) => "#ff9f00",
+            _ => layer_color(w.layer),
+        };
+        poly(&mut s, top, &w.pts, w.closed, &format!("stroke:{color};stroke-width:{width}"));
+    }
+    let sensor = "stroke:#e6b800;stroke-width:1.5";
+    for sw in &layout.switches {
+        match sw.shape {
+            SensorShape::Circle { center, radius } => circle(&mut s, top, center, radius, &format!("fill:none;{sensor}")),
+            SensorShape::Rect { min, max } => {
+                let corners = [min, Vector::new(max.x, min.y), max, Vector::new(min.x, max.y)];
+                poly(&mut s, top, &corners, true, sensor);
+            }
+            SensorShape::Segment { a, b } => poly(&mut s, top, &[a, b], false, sensor),
+        }
+    }
+    for t in &layout.transitions {
+        poly(&mut s, top, &[t.a, t.b], false, "stroke:#17becf;stroke-width:1.5;stroke-dasharray:4 2");
     }
     for f in &layout.flippers {
         let pose = Pose::new(f.pivot, f.rest);
