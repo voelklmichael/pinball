@@ -4,7 +4,7 @@
   "angle_deg": 6.5,
   "gravity": 22.0,
   "ball": { "radius": 0.0135, "mass": 0.08, "restitution": 0.9 },
-  "inbound": { "position": [0.495, 0.30], "velocity": [0.0, 4.0] },
+  "launcher": { "position": [0.495, 0.30], "start_velocity": [0.0, 4.0] },
   "elements": [
     { "type": "line", "from": [0.0, 0.24], "to": [0.0, 0.81] },
     { "type": "arc", "center": [0.26, 0.81], "radius": 0.26, "start_deg": 180, "end_deg": 0 },

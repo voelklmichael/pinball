@@ -321,7 +321,7 @@ impl Table {
 
     /// Puts a new ball at the launch position, frozen until it's launched.
     pub fn serve_ball(&mut self) -> RigidBodyHandle {
-        let body = self.add_ball(self.layout.launch.pos, Vector::ZERO);
+        let body = self.add_ball(self.layout.launcher.position, Vector::ZERO);
         self.world.bodies[body].set_enabled(false);
         self.balls.last_mut().unwrap().waiting = true;
         body
@@ -332,19 +332,19 @@ impl Table {
     }
 
     /// Launch key. A charged launch (plunger) fires on release, harder the
-    /// longer it was held; otherwise it fires on press at the launch velocity.
+    /// longer it was held; otherwise it fires on press at the start velocity.
     pub fn plunger(&mut self, held: bool, dt: f32) {
         let pressed = held && !self.launch_key;
         let released = !held && self.launch_key;
         self.launch_key = held;
-        let launch = &self.layout.launch;
-        let fire = if launch.charged {
+        let launcher = &self.layout.launcher;
+        let fire = if launcher.charged {
             if held {
                 self.plunger_charge = (self.plunger_charge + dt * 1.2).min(1.0);
             }
-            released.then(|| launch.vel * (0.3 + 0.7 * std::mem::take(&mut self.plunger_charge)))
+            released.then(|| launcher.start_velocity * (0.3 + 0.7 * std::mem::take(&mut self.plunger_charge)))
         } else {
-            pressed.then_some(launch.vel)
+            pressed.then_some(launcher.start_velocity)
         };
         let Some(vel) = fire else { return };
         for b in self.balls.iter_mut().filter(|b| b.waiting) {

@@ -206,12 +206,13 @@ pub struct BallDef {
     pub restitution: f32,
 }
 
-/// How a new ball enters play.
-pub struct Launch {
-    pub pos: Vector,
-    pub vel: Vector,
-    /// Plunger: holding the key longer shoots harder (30% to 100% of `vel`).
-    /// Otherwise the key fires at exactly `vel`.
+/// How a new ball enters play: it waits at `position` until the launch key
+/// shoots it off.
+pub struct Launcher {
+    pub position: Vector,
+    pub start_velocity: Vector,
+    /// Plunger: holding the key longer shoots harder (30% to 100% of
+    /// `start_velocity`). Otherwise the key fires at exactly `start_velocity`.
     pub charged: bool,
 }
 
@@ -232,7 +233,7 @@ pub struct Layout {
     /// Full gravity; the ball feels `gravity * sin(angle)` along the playfield.
     pub gravity: f32,
     pub ball: BallDef,
-    pub launch: Launch,
+    pub launcher: Launcher,
     pub walls: Vec<Wall>,
     pub ramps: Vec<Ramp>,
     pub sensors: Vec<Sensor>,
@@ -519,9 +520,9 @@ pub fn bavaria() -> Layout {
         angle: 6.5f32.to_radians(),
         gravity: 22.1,
         ball: BallDef { radius: BALL_R, mass: 0.08, restitution: 0.9 },
-        launch: Launch {
-            pos: v((LANE_X + TABLE_W) / 2.0, 0.03 + BALL_R + 0.002),
-            vel: v(0.0, 4.3),
+        launcher: Launcher {
+            position: v((LANE_X + TABLE_W) / 2.0, 0.03 + BALL_R + 0.002),
+            start_velocity: v(0.0, 4.3),
             charged: true,
         },
         walls,

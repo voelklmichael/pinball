@@ -140,7 +140,7 @@ pub fn draw(table: &Table, game: &Game) {
     // Plunger charge, as a bar under the launch position.
     if table.plunger_charge > 0.0 {
         let r = layout.ball.radius;
-        let base = view.p(layout.launch.pos - PVec::new(r, r));
+        let base = view.p(layout.launcher.position - PVec::new(r, r));
         let h = 0.15 * table.plunger_charge * view.scale;
         draw_rectangle(base.x, base.y, 2.0 * r * view.scale, h, Color::from_rgba(255, 120, 0, 200));
     }

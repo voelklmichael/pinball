@@ -23,7 +23,7 @@ Unknown fields are errors, so a typo is reported instead of silently ignored.
 | `angle_deg` | yes | | Tilt of the table |
 | `gravity` | no | `9.81` | Full gravity. The ball feels `gravity × sin(angle)` along the table. A larger value makes the game faster; the built-in table uses 22 |
 | `ball` | yes | | See below |
-| `inbound` | yes | | See below |
+| `launcher` | yes | | See below |
 | `elements` | yes | | List of walls and flippers |
 
 **`ball`**
@@ -34,7 +34,7 @@ Unknown fields are errors, so a typo is reported instead of silently ignored.
 | `mass` | no | `0.08` | Only matters when two balls collide |
 | `restitution` | no | `0.9` | Softness. Every bounce is `wall restitution × ball restitution` |
 
-**`inbound`:** a new ball waits at `position` and is shot off at `velocity` (`[vx, vy]`, m/s) when you press Space.
+**`launcher`:** a new ball waits at `position` and is shot off at `start_velocity` (`[vx, vy]`, m/s) when you press Space.
 
 ## Walls
 

@@ -11,7 +11,7 @@ use std::f32::consts::TAU;
 use rapier2d::math::Vector;
 use serde::Deserialize;
 
-use crate::layout::{BallDef, Button, FlipperDef, Launch, Layer, Layout, Wall};
+use crate::layout::{BallDef, Button, FlipperDef, Launcher, Layer, Layout, Wall};
 
 type P = [f32; 2];
 
@@ -28,7 +28,7 @@ pub struct TableFile {
     #[serde(default = "default_gravity")]
     pub gravity: f32,
     pub ball: BallSpec,
-    pub inbound: Inbound,
+    pub launcher: LauncherSpec,
     pub elements: Vec<Element>,
 }
 
@@ -55,13 +55,13 @@ fn default_ball_restitution() -> f32 {
     0.9
 }
 
-/// A new ball appears at `position` and is shot off at `velocity` (m/s)
+/// A new ball waits at `position` and is shot off at `start_velocity` (m/s)
 /// when the launch key is pressed.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Inbound {
+pub struct LauncherSpec {
     pub position: P,
-    pub velocity: P,
+    pub start_velocity: P,
 }
 
 #[derive(Deserialize)]
@@ -327,9 +327,9 @@ impl TableFile {
         check(self.ball.radius > 0.0, || "ball.radius must be > 0".into())?;
         check(self.ball.mass > 0.0, || "ball.mass must be > 0".into())?;
         check_coefficient("ball.restitution", self.ball.restitution)?;
-        let pos = v(self.inbound.position);
-        check(pos.x >= 0.0 && pos.y >= 0.0 && pos.x <= size.x && pos.y <= size.y, || {
-            "inbound.position is outside the table".into()
+        let position = v(self.launcher.position);
+        check(position.x >= 0.0 && position.y >= 0.0 && position.x <= size.x && position.y <= size.y, || {
+            "launcher.position is outside the table".into()
         })?;
 
         let mut walls = Vec::new();
@@ -357,7 +357,7 @@ impl TableFile {
             angle: self.angle_deg.to_radians(),
             gravity: self.gravity,
             ball: BallDef { radius: self.ball.radius, mass: self.ball.mass, restitution: self.ball.restitution },
-            launch: Launch { pos, vel: v(self.inbound.velocity), charged: false },
+            launcher: Launcher { position, start_velocity: v(self.launcher.start_velocity), charged: false },
             walls,
             flippers,
             ramps: Vec::new(),

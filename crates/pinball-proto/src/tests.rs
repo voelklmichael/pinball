@@ -103,7 +103,7 @@ fn served_ball_waits_for_launch() {
     table.serve_ball();
     run(&mut table, 1.0);
     assert!(table.ball_waiting());
-    assert_eq!(table.ball_pos(&table.balls[0]), table.layout.launch.pos);
+    assert_eq!(table.ball_pos(&table.balls[0]), table.layout.launcher.position);
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn simple_table_loads_and_plays() {
     let r = run(&mut table, 3.0);
     let max_y = r.trace.iter().map(|p| p.y).fold(0.0, f32::max);
     write_svg_for(&table.layout, "simple", &[(r.trace, COLORS[0])]);
-    assert!(max_y > 0.95, "inbound shot did not go round the arch: max y {max_y}");
+    assert!(max_y > 0.95, "launch did not go round the arch: max y {max_y}");
 }
 
 #[test]
@@ -202,7 +202,7 @@ fn table_file_errors_name_the_problem() {
     let base = |elements: &str| {
         format!(
             r#"{{"size": [0.5, 1.0], "angle_deg": 6.5, "ball": {{"radius": 0.0135}},
-               "inbound": {{"position": [0.4, 0.3], "velocity": [0, 3]}}, "elements": [{elements}]}}"#
+               "launcher": {{"position": [0.4, 0.3], "start_velocity": [0, 3]}}, "elements": [{elements}]}}"#
         )
     };
     let e = err(&base(r#"{"type": "line", "from": [0, 0], "too": [1, 1]}"#));
