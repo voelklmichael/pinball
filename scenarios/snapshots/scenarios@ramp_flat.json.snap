@@ -1,0 +1,11 @@
+---
+source: scenario/tests/scenarios.rs
+description: A straight shot up a flat (unbanked) ramp runs down its middle without touching the rails.
+input_file: scenarios/ramp_flat.json
+---
+  0.000  serve ball#1 at (0.130, 0.050)
+  0.015  cross ball#1 flat_ramp.entrance: playfield -> flat_ramp
+  0.312  cross ball#1 flat_ramp.exit: flat_ramp -> playfield
+  0.394  touch ball#1 box
+  0.402  leave ball#1 box
+    end  ball#1 at (0.130, 0.190) v=(0.00, -2.00) on playfield

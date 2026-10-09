@@ -1,0 +1,8 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A ball lock holds a ball until it's told to let it go."
+input_file: scenarios/lock_holds.json
+---
+  0.000  serve ball#1 at (0.420, 0.750)
+  0.333  capture ball#1 lock
+    end  ball#1 at (0.420, 0.600) v=(0.00, 0.00) on playfield, held in lock

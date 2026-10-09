@@ -1,0 +1,9 @@
+---
+source: scenario/tests/scenarios.rs
+description: A fast ball rolls straight over a saucer without being caught.
+input_file: scenarios/saucer_fast_passes.json
+---
+  0.000  serve ball#1 at (0.220, 0.100)
+  0.481  touch ball#1 box
+  0.492  leave ball#1 box
+    end  ball#1 at (0.220, 0.485) v=(0.00, -1.56) on playfield

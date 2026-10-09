@@ -1,0 +1,11 @@
+{
+  "description": "A fast ball rolls straight over a saucer without being caught.",
+  "table": "../tables/bench_targets.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.22, 0.10], "velocity": [0.0, 2.5] }],
+  "expect": [
+    {"never": "capture saucer"},
+    {"enters": {"min": [0.2, 0.5], "max": [0.24, 1.0]}, "between": [0.0, 0.5]}
+  ]
+}

@@ -725,21 +725,23 @@ impl TableFile {
                     let to = lookup(&r.to, layer).map_err(|e| rctx(format!("to: {e}")))?;
                     let ramp = ramp(r, tolerance).map_err(rctx)?;
                     let (restitution, friction) = wall_defaults(&Props::default());
-                    let rail = |side: &str, pts: &Vec<Vector>| Wall {
+                    // One-sided, with the track on the right of the point order.
+                    let rail = |side: &str, pts: Vec<Vector>| Wall {
                         id: Some(format!("{}.{side}_rail", spec.id)),
                         layer,
-                        pts: pts.clone(),
+                        pts,
                         closed: false,
                         restitution,
                         friction,
                         kick: 0.0,
                         one_way: None,
+                        one_sided: true,
                     };
                     if matches!(r.rails, Rails::Both | Rails::Left) {
-                        walls.push(rail("left", &ramp.left));
+                        walls.push(rail("left", ramp.left.clone()));
                     }
                     if matches!(r.rails, Rails::Both | Rails::Right) {
-                        walls.push(rail("right", &ramp.right));
+                        walls.push(rail("right", ramp.right.iter().rev().copied().collect()));
                     }
                     let n = ramp.center.len();
                     let tangent = |i: usize, j: usize| (ramp.center[j] - ramp.center[i]).normalize();
@@ -865,6 +867,7 @@ impl TableFile {
                             friction,
                             kick,
                             one_way: one_way.map(|d| d.normalize()),
+                            one_sided: false,
                         });
                     }
                 }

@@ -1,0 +1,13 @@
+---
+source: scenario/tests/scenarios.rs
+description: The same shot up a ramp banked 15 degrees drifts over to the right rail.
+input_file: scenarios/ramp_banked.json
+---
+  0.000  serve ball#1 at (0.390, 0.050)
+  0.015  cross ball#1 banked_ramp.entrance: playfield -> banked_ramp
+  0.083  touch ball#1 banked_ramp.right_rail
+  0.317  cross ball#1 banked_ramp.exit: banked_ramp -> playfield
+  0.310  leave ball#1 banked_ramp.right_rail
+  0.404  touch ball#1 box
+  0.412  leave ball#1 box
+    end  ball#1 at (0.389, 0.233) v=(-0.03, -1.94) on playfield

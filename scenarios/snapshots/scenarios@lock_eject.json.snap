@@ -1,0 +1,13 @@
+---
+source: scenario/tests/scenarios.rs
+description: "When the rules eject the lock, the held ball leaves it and isn't caught again on the way out."
+input_file: scenarios/lock_eject.json
+---
+  0.000  serve ball#1 at (0.420, 0.750)
+  0.333  capture ball#1 lock
+  1.000  eject ball#1 lock
+  1.404  touch ball#1 box
+  1.413  leave ball#1 box
+  1.871  touch ball#1 box
+  1.892  leave ball#1 box
+    end  ball#1 at (0.420, 0.014) v=(0.00, -0.15) on playfield

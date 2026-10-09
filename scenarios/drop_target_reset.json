@@ -1,0 +1,12 @@
+{
+  "description": "A dropped target lets balls through until it's reset; once reset, a ball falling on its back rests on it without knocking it down.",
+  "table": "../tables/bench_targets.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.175, 0.30], "velocity": [0.0, 2.5] }, { "position": [0.175, 0.95] }],
+  "inputs": [{ "at": 0.3, "reset": "kegel_3" }],
+  "expect": [
+    {"sequence": ["drop kegel_3", "reset kegel_3", "touch kegel_3"]},
+    {"at_end": {"near": [0.175, 0.8135], "within": 0.005, "max_speed": 0.01}}
+  ]
+}

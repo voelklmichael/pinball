@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::Mutex;
 
+use rapier2d::parry::shape::PolylineFlags;
 use rapier2d::prelude::*;
 
 use crate::layout::{Button, FlipperDef, Layer, Layout, SensorShape};
@@ -169,6 +170,9 @@ pub struct Table {
     held: Vec<VecDeque<(u32, u64)>>,
     /// Balls just ejected from a hole, ignored by it until they've left it.
     ejected: BTreeSet<(u32, usize)>,
+    /// Each ball's velocity before the current step, i.e. before any bounce
+    /// in it: how fast a ball *hit* something.
+    before: BTreeMap<u32, Vector>,
     launch_key: bool,
     buttons: [bool; 2],
 }
@@ -192,7 +196,8 @@ impl Table {
             if w.closed {
                 pts.push(pts[0]);
             }
-            let mut builder = ColliderBuilder::polyline(pts, None)
+            let flags = if w.one_sided { PolylineFlags::ORIENTED } else { PolylineFlags::empty() };
+            let mut builder = ColliderBuilder::polyline_with_flags(pts, None, flags)
                 .restitution(w.restitution)
                 .friction(w.friction)
                 .collision_groups(layer_groups(w.layer));
@@ -289,6 +294,7 @@ impl Table {
             drops_down,
             held,
             ejected: BTreeSet::new(),
+            before: BTreeMap::new(),
             launch_key: false,
             buttons: [false; 2],
         }
@@ -474,6 +480,7 @@ impl Table {
             body.set_linvel(v, true);
         }
 
+        self.before = self.balls.iter().map(|b| (b.number, self.world.bodies[b.body].linvel())).collect();
         self.world.step_with_events(&self.hooks, &self.collector);
         self.steps += 1;
 
@@ -590,9 +597,9 @@ impl Table {
         }
     }
 
+    /// The ball's velocity coming into this step, before it hit anything.
     fn ball_velocity(&self, number: u32) -> Vector {
-        let b = self.balls.iter().find(|b| b.number == number).unwrap();
-        self.world.bodies[b.body].linvel()
+        self.before.get(&number).copied().unwrap_or(Vector::ZERO)
     }
 
     /// Whether this hit drops the target: into its front, hard enough.

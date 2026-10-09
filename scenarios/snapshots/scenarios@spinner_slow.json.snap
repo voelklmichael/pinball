@@ -1,0 +1,8 @@
+---
+source: scenario/tests/scenarios.rs
+description: A slow ball through the spinner makes it spin only a few times.
+input_file: scenarios/spinner_slow.json
+---
+  0.000  serve ball#1 at (0.470, 0.100)
+  0.204  spin ball#1 spinner x5
+    end  ball#1 at (0.470, 0.361) v=(0.00, -0.13) on playfield

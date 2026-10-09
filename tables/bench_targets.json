@@ -1,0 +1,26 @@
+{
+  "name": "Bench: drop targets, holes, spinner",
+  "size": [0.52, 1.0],
+  "angle_deg": 6.5,
+  "gravity": 22.0,
+  "ball": { "radius": 0.0135 },
+  "launcher": { "position": [0.26, 0.5], "start_velocity": [0.0, 0.0] },
+  "layers": [
+    {
+      "id": "playfield",
+      "elements": [
+        { "type": "polyline", "id": "box", "points": [[0, 0], [0.52, 0], [0.52, 1.0], [0, 1.0]], "closed": true },
+
+        { "type": "drop_target", "id": "kegel_1", "from": [0.05, 0.80], "to": [0.10, 0.80], "facing": [0, -1] },
+        { "type": "drop_target", "id": "kegel_2", "from": [0.10, 0.80], "to": [0.15, 0.80], "facing": [0, -1] },
+        { "type": "drop_target", "id": "kegel_3", "from": [0.15, 0.80], "to": [0.20, 0.80], "facing": [0, -1] },
+
+        { "type": "hole", "id": "saucer", "center": [0.22, 0.30], "eject": [0.0, -0.8], "eject_after": 0.5, "max_speed": 0.8 },
+        { "type": "hole", "id": "scoop", "center": [0.30, 0.60], "eject": [0.0, -1.0], "eject_after": 1.0 },
+        { "type": "hole", "id": "lock", "center": [0.42, 0.60], "eject": [0.0, -1.0] },
+
+        { "type": "spinner", "id": "spinner", "from": [0.44, 0.30], "to": [0.50, 0.30] }
+      ]
+    }
+  ]
+}

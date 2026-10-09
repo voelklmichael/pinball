@@ -1,0 +1,12 @@
+---
+source: scenario/tests/scenarios.rs
+description: A firm shot into the front of a drop target knocks it down; its neighbours stay up.
+input_file: scenarios/drop_target_hit.json
+---
+  0.000  serve ball#1 at (0.075, 0.300)
+  0.223  touch ball#1 kegel_1
+  0.223  drop ball#1 kegel_1
+  0.225  leave ball#1 kegel_1
+  0.827  touch ball#1 box
+  0.835  leave ball#1 box
+    end  ball#1 at (0.075, 0.080) v=(0.00, 0.15) on playfield

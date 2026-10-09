@@ -19,7 +19,7 @@ Each test does two things:
 1. **The checks in `expect`.** They state what the scenario is about and survive tuning. If one fails, the behaviour is broken.
 2. **The snapshot** in `snapshots/`: the full list of events (see below). It catches any change, intended or not.
 
-The ball paths are also drawn to `target/svg/scenarios/<name>.svg` on every run, for looking at.
+The ball paths are also drawn to `target/svg/scenarios/<name>.svg` on every run, for looking at. To follow one ball step by step (position, speed, events), run `cargo run -p scenario --example trace -- scenarios/<name>.json`.
 
 ## The event trace
 
@@ -59,12 +59,12 @@ When fixing a physics bug, first add a scenario that shows it, then fix it, so i
 | `duration` | yes | | Seconds to run |
 | `serve` | no | `true` | Serve a ball at the launcher at the start |
 | `balls` | no | `[]` | Balls placed directly at the start: `{ "position": [x, y], "velocity": [vx, vy] }` (velocity optional) |
-| `inputs` | no | `[]` | Key presses: `{ "at": 0.2, "press": "launch" }` or `{ "at": 0.4, "release": "left" }`. Keys: `launch`, `left`, `right` |
+| `inputs` | no | `[]` | Key presses: `{ "at": 0.2, "press": "launch" }` or `{ "at": 0.4, "release": "left" }` (keys: `launch`, `left`, `right`), or actions the rules would take: `{ "at": 1.0, "reset": "kegel_1" }` raises a drop target, `{ "at": 1.0, "eject": "lock" }` lets a hole's oldest ball go |
 | `expect` | no | `[]` | Checks, see below |
 
 ### Checks
 
-Events are written like trace lines without time and ball number: `"launch"`, `"touch outer_wall"`, `"leave left_flipper"`, `"kick bumper"`, `"switch lane"`, `"cross loop.exit"` (a transition), `"flipper_up left_flipper"`, `"drain"`.
+Events are written like trace lines without time and ball number: `"launch"`, `"touch outer_wall"`, `"leave left_flipper"`, `"kick bumper"`, `"switch lane"`, `"cross loop.exit"` (a transition), `"drop kegel_1"`, `"reset kegel_1"`, `"capture scoop"`, `"eject scoop"`, `"spin spinner"`, `"flipper_up left_flipper"`, `"drain"`.
 
 | Check | Passes if |
 |---|---|

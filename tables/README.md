@@ -64,9 +64,10 @@ A layer with a `ramp` is a raised track. It generates its rails, its slope (the 
 | `heights` | yes | | `[position, height]` pairs: position along the centreline from 0 (entrance) to 1 (exit), height in metres. Linear in between |
 | `from` | yes | | Layer the entrance is on |
 | `to` | yes | | Layer the ball lands on at the exit |
+| `bank` | no | flat | `[position, degrees]` pairs: sideways tilt along the ramp. Positive pushes the ball toward the right rail. Linear in between |
 | `rails` | no | `"both"` | `"both"`, `"left"`, `"right"` or `"none"` (left/right as seen walking up the ramp). Rails are named `<id>.left_rail` / `<id>.right_rail` and use the layer's `defaults` |
 
-Example: [bench_ramp.json](bench_ramp.json) has a loop ramp, a lift ramp to an upper level, and a hole back down.
+Examples: [bench_ramp.json](bench_ramp.json) has a loop ramp, a lift ramp to an upper level, and a hole back down; [bench_bank.json](bench_bank.json) a flat and a banked ramp.
 
 At most 32 layers.
 
@@ -126,6 +127,43 @@ A line that moves balls between layers, e.g. a hole in an upper level. A ball on
 | `two_way` | no | `false` | Balls on `target` crossing back return to this layer |
 
 The layer is decided when the ball has crossed the line, by which side its centre is on, so a ball that stops on the line and rolls back stays where it was.
+
+## Drop target
+
+Blocks the ball like a wall until it's hit hard enough **into its front**; then it drops and lets balls through until the rules reset it. Light touches and hits from behind just bounce.
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `id` | no | | Name |
+| `from`, `to` | yes | | The target's face |
+| `facing` | yes | | `[dx, dy]`: the way the front faces, toward where balls come from |
+| `min_speed` | no | `0.3` | Speed into the front (m/s) that drops it |
+| `restitution` | no | layer default | |
+
+## Hole
+
+A scoop, saucer or ball lock: catches a ball that rolls in and holds it, then lets it go at `eject`.
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `id` | no | | Name |
+| `center` | yes | | |
+| `radius` | no | `0.012` | |
+| `eject` | yes | | `[vx, vy]`: velocity a ball leaves with |
+| `eject_after` | no | | Seconds until the ball is ejected (a scoop). Without it the hole is a **lock**: it holds balls (several, oldest out first) until the rules eject them |
+| `max_speed` | no | none | Faster balls roll over it (a saucer) |
+
+## Spinner
+
+A flap on a line that balls pass through without being blocked. Reports how often it spun: `spins_per_mps` (default `8`) times the ball's speed across the line, at least once.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | no | Name |
+| `from`, `to` | yes | The line |
+| `spins_per_mps` | no | Default `8` |
+
+Examples of all three: [bench_targets.json](bench_targets.json).
 
 ## Flipper
 

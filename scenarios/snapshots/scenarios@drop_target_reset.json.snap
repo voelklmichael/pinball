@@ -1,0 +1,21 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A dropped target lets balls through until it's reset; once reset, a ball falling on its back rests on it without knocking it down."
+input_file: scenarios/drop_target_reset.json
+---
+  0.000  serve ball#1 at (0.175, 0.300)
+  0.000  serve ball#2 at (0.175, 0.950)
+  0.223  touch ball#1 kegel_3
+  0.223  drop ball#1 kegel_3
+  0.225  leave ball#1 kegel_3
+  0.300  reset kegel_3
+  0.348  touch ball#2 kegel_3
+  0.365  leave ball#2 kegel_3
+  0.538  touch ball#2 kegel_3
+  0.827  touch ball#1 box
+  0.835  leave ball#1 box
+  1.306  touch ball#1 box
+  1.327  leave ball#1 box
+  1.442  touch ball#1 box
+    end  ball#1 at (0.175, 0.013) v=(0.00, 0.00) on playfield
+    end  ball#2 at (0.175, 0.813) v=(0.00, 0.00) on playfield

@@ -1,0 +1,12 @@
+{
+  "description": "A firm shot into the front of a drop target knocks it down; its neighbours stay up.",
+  "table": "../tables/bench_targets.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.075, 0.30], "velocity": [0.0, 2.5] }],
+  "expect": [
+    {"sequence": ["touch kegel_1", "drop kegel_1"]},
+    {"never": "drop kegel_2"},
+    {"never": "drop kegel_3"}
+  ]
+}

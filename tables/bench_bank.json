@@ -1,0 +1,39 @@
+{
+  "name": "Bench: flat and banked ramp",
+  "size": [0.52, 1.0],
+  "angle_deg": 6.5,
+  "gravity": 22.0,
+  "ball": { "radius": 0.0135 },
+  "launcher": { "position": [0.13, 0.05], "start_velocity": [0.0, 3.0] },
+  "layers": [
+    {
+      "id": "playfield",
+      "elements": [
+        { "type": "polyline", "id": "box", "points": [[0, 0], [0.52, 0], [0.52, 1.0], [0, 1.0]], "closed": true }
+      ]
+    },
+    {
+      "id": "flat_ramp",
+      "defaults": { "restitution": 0.1 },
+      "ramp": {
+        "center": { "start": [0.13, 0.10], "segments": [{ "line": [0.13, 0.80] }] },
+        "width": 0.055,
+        "heights": [[0, 0], [0.5, 0.03], [1, 0]],
+        "from": "playfield",
+        "to": "playfield"
+      }
+    },
+    {
+      "id": "banked_ramp",
+      "defaults": { "restitution": 0.1 },
+      "ramp": {
+        "center": { "start": [0.39, 0.10], "segments": [{ "line": [0.39, 0.80] }] },
+        "width": 0.055,
+        "heights": [[0, 0], [0.5, 0.03], [1, 0]],
+        "bank": [[0, 15], [1, 15]],
+        "from": "playfield",
+        "to": "playfield"
+      }
+    }
+  ]
+}

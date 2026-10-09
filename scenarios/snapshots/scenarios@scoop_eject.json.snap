@@ -1,0 +1,14 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A ball that drops into the scoop is held for a second, then ejected down the table."
+input_file: scenarios/scoop_eject.json
+---
+  0.000  serve ball#1 at (0.300, 0.750)
+  0.333  capture ball#1 scoop
+  1.333  eject ball#1 scoop
+  1.737  touch ball#1 box
+  1.746  leave ball#1 box
+  2.204  touch ball#1 box
+  2.225  leave ball#1 box
+  2.335  touch ball#1 box
+    end  ball#1 at (0.300, 0.013) v=(0.00, 0.00) on playfield

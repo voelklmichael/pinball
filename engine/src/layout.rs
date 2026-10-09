@@ -99,6 +99,10 @@ pub struct Wall {
     pub kick: f32,
     /// One-way gate: balls moving in this direction pass through.
     pub one_way: Option<Vector>,
+    /// Balls are only ever on the right of the point order (ramp rails).
+    /// Lets the physics treat the joints between segments correctly, so a
+    /// ball rolling along the wall isn't bounced off them.
+    pub one_sided: bool,
 }
 
 /// Where a switch detects the ball (its centre's shape is irrelevant: the

@@ -1,0 +1,9 @@
+---
+source: scenario/tests/scenarios.rs
+description: A ball that barely reaches a drop target only touches it; it stays up.
+input_file: scenarios/drop_target_soft.json
+---
+  0.000  serve ball#1 at (0.125, 0.700)
+  0.208  touch ball#1 kegel_2
+  0.244  leave ball#1 kegel_2
+    end  ball#1 at (0.125, 0.040) v=(0.00, -1.84) on playfield

@@ -1,0 +1,14 @@
+---
+source: scenario/tests/scenarios.rs
+description: A slow ball is caught by the saucer and kicked back out.
+input_file: scenarios/saucer_slow_caught.json
+---
+  0.000  serve ball#1 at (0.220, 0.100)
+  0.188  capture ball#1 saucer
+  0.688  eject ball#1 saucer
+  0.952  touch ball#1 box
+  0.967  leave ball#1 box
+  1.290  touch ball#1 box
+  1.325  leave ball#1 box
+  1.371  touch ball#1 box
+    end  ball#1 at (0.220, 0.013) v=(0.00, 0.00) on playfield

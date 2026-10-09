@@ -1,0 +1,12 @@
+{
+  "description": "A ball lock holds a ball until it's told to let it go.",
+  "table": "../tables/bench_targets.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.42, 0.75] }],
+  "expect": [
+    {"event": "capture lock"},
+    {"never": "eject lock"},
+    {"at_end": {"near": [0.42, 0.6], "within": 0.001, "max_speed": 0.001}}
+  ]
+}

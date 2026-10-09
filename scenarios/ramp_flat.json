@@ -1,0 +1,12 @@
+{
+  "description": "A straight shot up a flat (unbanked) ramp runs down its middle without touching the rails.",
+  "table": "../tables/bench_bank.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.13, 0.05], "velocity": [0.0, 3.0] }],
+  "expect": [
+    {"sequence": ["cross flat_ramp.entrance", "cross flat_ramp.exit"]},
+    {"never": "touch flat_ramp.left_rail"},
+    {"never": "touch flat_ramp.right_rail"}
+  ]
+}

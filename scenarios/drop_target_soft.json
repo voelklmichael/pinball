@@ -1,0 +1,11 @@
+{
+  "description": "A ball that barely reaches a drop target only touches it; it stays up.",
+  "table": "../tables/bench_targets.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.125, 0.70], "velocity": [0.0, 0.7] }],
+  "expect": [
+    {"event": "touch kegel_2"},
+    {"never": "drop kegel_2"}
+  ]
+}

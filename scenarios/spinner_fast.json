@@ -1,0 +1,10 @@
+{
+  "description": "A fast ball through the spinner makes it spin many times.",
+  "table": "../tables/bench_targets.json",
+  "duration": 0.5,
+  "serve": false,
+  "balls": [{ "position": [0.47, 0.10], "velocity": [0.0, 3.0] }],
+  "expect": [
+    {"event": "spin spinner"}
+  ]
+}

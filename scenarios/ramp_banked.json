@@ -1,0 +1,11 @@
+{
+  "description": "The same shot up a ramp banked 15 degrees drifts over to the right rail.",
+  "table": "../tables/bench_bank.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.39, 0.05], "velocity": [0.0, 3.0] }],
+  "expect": [
+    {"sequence": ["cross banked_ramp.entrance", "touch banked_ramp.right_rail", "cross banked_ramp.exit"]},
+    {"never": "touch banked_ramp.left_rail"}
+  ]
+}

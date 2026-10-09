@@ -1,0 +1,10 @@
+{
+  "description": "A slow ball is caught by the saucer and kicked back out.",
+  "table": "../tables/bench_targets.json",
+  "duration": 1.5,
+  "serve": false,
+  "balls": [{ "position": [0.22, 0.10], "velocity": [0.0, 1.2] }],
+  "expect": [
+    {"sequence": ["capture saucer", "eject saucer"]}
+  ]
+}

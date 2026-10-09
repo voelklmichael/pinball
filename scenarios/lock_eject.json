@@ -1,0 +1,13 @@
+{
+  "description": "When the rules eject the lock, the held ball leaves it and isn't caught again on the way out.",
+  "table": "../tables/bench_targets.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.42, 0.75] }],
+  "inputs": [{ "at": 1.0, "eject": "lock" }],
+  "expect": [
+    {"sequence": ["capture lock", "eject lock"]},
+    {"event": "eject lock", "between": [1.0, 1.0]},
+    {"at_end": {"near": [0.42, 0.0135], "within": 0.02}}
+  ]
+}
