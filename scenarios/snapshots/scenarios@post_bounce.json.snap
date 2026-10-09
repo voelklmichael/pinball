@@ -1,0 +1,9 @@
+---
+source: scenario/tests/scenarios.rs
+description: A ball dropped just right of the centre post bounces off it to the right.
+input_file: scenarios/post_bounce.json
+---
+  0.000  serve ball#1 at (0.270, 0.720)
+  0.237  touch ball#1 center_post
+  0.244  leave ball#1 center_post
+    end  ball#1 at (0.351, 0.227) v=(0.09, -1.44)

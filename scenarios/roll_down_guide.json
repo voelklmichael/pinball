@@ -1,0 +1,11 @@
+{
+  "description": "A ball dropped on the left rolls down the guide wall onto the resting left flipper, off its tip and drains.",
+  "table": "../tables/simple.json",
+  "duration": 3.0,
+  "serve": false,
+  "balls": [{ "position": [0.03, 0.40] }],
+  "expect": [
+    {"sequence": ["touch outer_wall", "touch left_flipper", "drain"]},
+    {"event": "drain", "between": [0.5, 3.0]}
+  ]
+}

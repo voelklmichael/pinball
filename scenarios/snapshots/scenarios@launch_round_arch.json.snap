@@ -1,0 +1,26 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A launched ball follows the outer wall round the top arch, comes down the left side and drains."
+input_file: scenarios/launch_round_arch.json
+---
+  0.000  serve ball#1 at (0.495, 0.300)
+  0.200  launch ball#1 v=(0.00, 4.00)
+  0.356  touch ball#1 outer_wall
+  0.373  leave ball#1 outer_wall
+  0.410  touch ball#1 outer_wall
+  0.560  leave ball#1 outer_wall
+  0.681  touch ball#1 outer_wall
+  0.702  leave ball#1 outer_wall
+  0.815  touch ball#1 outer_wall
+  0.819  leave ball#1 outer_wall
+  0.965  touch ball#1 right_flipper
+  0.971  leave ball#1 right_flipper
+  1.198  touch ball#1 outer_wall
+  1.206  leave ball#1 outer_wall
+  1.752  touch ball#1 outer_wall
+  1.760  leave ball#1 outer_wall
+  1.996  touch ball#1 right_flipper
+  2.013  leave ball#1 right_flipper
+  2.031  touch ball#1 left_flipper
+  2.040  leave ball#1 left_flipper
+  2.167  drain ball#1

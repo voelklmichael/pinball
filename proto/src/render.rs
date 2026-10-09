@@ -3,11 +3,10 @@
 
 use macroquad::prelude::*;
 
-use crate::game::Game;
-use crate::layout::Layer;
-use crate::physics::Table;
+use engine::layout::Layer;
+use engine::physics::Table;
 
-type PVec = rapier2d::math::Vector;
+type PVec = engine::rapier2d::math::Vector;
 
 /// Maps table metres (y up) to screen pixels (y down), fitting the table to the window.
 struct View {
@@ -66,7 +65,8 @@ fn draw_ball(view: &View, pos: PVec, radius: f32) {
     draw_circle(c.x - 0.3 * r, c.y - 0.3 * r, 0.35 * r, WHITE);
 }
 
-pub fn draw(table: &Table, game: &Game) {
+/// Draws the table with a status line on top and an optional message in the middle.
+pub fn draw(table: &Table, status: &str, message: Option<&str>) {
     clear_background(Color::from_rgba(14, 18, 32, 255));
     let layout = &table.layout;
     let size = layout.size;
@@ -92,21 +92,10 @@ pub fn draw(table: &Table, game: &Game) {
     }
 
     // --- HUD ---
-    let hud = format!(
-        "SCORE {:>9}   BALL {}{}",
-        game.score,
-        game.ball_no,
-        if game.ball_save > 0.0 { "   SAVE" } else { "" }
-    );
-    draw_text(&hud, 16.0, 34.0, 30.0, WHITE);
+    draw_text(status, 16.0, 34.0, 30.0, WHITE);
     let name_size = measure_text(&layout.name, None, 20, 1.0);
     draw_text(&layout.name, screen_width() - name_size.width - 16.0, 52.0, 20.0, GRAY);
-    let msg = if game.game_over {
-        Some("GAME OVER - press N")
-    } else {
-        game.message.as_ref().map(|(m, _)| m.as_str())
-    };
-    if let Some(msg) = msg {
+    if let Some(msg) = message {
         let size = measure_text(msg, None, 40, 1.0);
         let y = view.p(PVec::new(0.0, layout.size.y * 0.45)).y;
         draw_text(msg, (screen_width() - size.width) / 2.0, y, 40.0, YELLOW);

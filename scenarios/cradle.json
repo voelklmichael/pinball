@@ -1,0 +1,12 @@
+{
+  "description": "A ball dropped onto the raised left flipper rolls down it and comes to rest against the guide (a cradle).",
+  "table": "../tables/simple.json",
+  "duration": 3.0,
+  "serve": false,
+  "balls": [{ "position": [0.23, 0.22] }],
+  "inputs": [{ "at": 0.0, "press": "left" }],
+  "expect": [
+    {"never": "drain"},
+    {"at_end": {"near": [0.163, 0.163], "within": 0.01, "max_speed": 0.01}}
+  ]
+}

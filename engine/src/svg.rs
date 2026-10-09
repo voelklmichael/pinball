@@ -1,5 +1,5 @@
-//! Debug view of the layout (plus optional ball traces) as SVG, for checking
-//! geometry without opening a window. Used by the tests.
+//! Debug view of the layout (plus optional ball paths) as SVG, for checking
+//! geometry and ball paths without opening a window. Used by the tests.
 
 use std::fmt::Write;
 

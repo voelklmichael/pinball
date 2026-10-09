@@ -1,0 +1,19 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A ball dropped on the left rolls down the guide wall onto the resting left flipper, off its tip and drains."
+input_file: scenarios/roll_down_guide.json
+---
+  0.000  serve ball#1 at (0.030, 0.400)
+  0.400  touch ball#1 outer_wall
+  0.408  leave ball#1 outer_wall
+  0.527  touch ball#1 outer_wall
+  0.604  leave ball#1 outer_wall
+  0.700  touch ball#1 left_flipper
+  0.702  leave ball#1 left_flipper
+  0.735  touch ball#1 left_flipper
+  0.821  leave ball#1 left_flipper
+  0.842  touch ball#1 right_flipper
+  0.852  leave ball#1 right_flipper
+  0.900  touch ball#1 left_flipper
+  0.915  leave ball#1 left_flipper
+  1.129  drain ball#1

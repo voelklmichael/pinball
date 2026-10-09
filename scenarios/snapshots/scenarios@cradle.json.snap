@@ -1,0 +1,14 @@
+---
+source: scenario/tests/scenarios.rs
+description: A ball dropped onto the raised left flipper rolls down it and comes to rest against the guide (a cradle).
+input_file: scenarios/cradle.json
+---
+  0.000  serve ball#1 at (0.230, 0.220)
+  0.000  flipper_up left_flipper
+  0.148  touch ball#1 left_flipper
+  0.179  leave ball#1 left_flipper
+  0.196  touch ball#1 left_flipper
+  0.575  touch ball#1 outer_wall
+  0.594  leave ball#1 outer_wall
+  0.652  touch ball#1 outer_wall
+    end  ball#1 at (0.163, 0.163) v=(0.00, -0.00)

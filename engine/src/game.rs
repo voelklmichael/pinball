@@ -23,6 +23,7 @@ impl Game {
     }
 
     pub fn start(&mut self, table: &mut Table) {
+        log::info!("new game on \"{}\"", table.layout.name);
         self.score = 0;
         self.ball_no = 0;
         self.game_over = false;
@@ -31,20 +32,39 @@ impl Game {
 
     fn next_ball(&mut self, table: &mut Table) {
         self.ball_no += 1;
+        log::info!("ball {} of {BALLS_PER_GAME}", self.ball_no);
         self.ball_save = BALL_SAVE_SECS;
         table.serve_ball();
     }
 
     pub fn say(&mut self, text: impl Into<String>) {
-        self.message = Some((text.into(), 2.0));
+        let text = text.into();
+        log::info!("display: {text}");
+        self.message = Some((text, 2.0));
+    }
+
+    /// Status line and centre message for the display.
+    pub fn hud(&self) -> (String, Option<String>) {
+        let status = format!(
+            "SCORE {:>9}   BALL {}{}",
+            self.score,
+            self.ball_no,
+            if self.ball_save > 0.0 { "   SAVE" } else { "" }
+        );
+        let message = if self.game_over {
+            Some("GAME OVER - press N".to_string())
+        } else {
+            self.message.as_ref().map(|(m, _)| m.clone())
+        };
+        (status, message)
     }
 
     pub fn handle(&mut self, table: &mut Table, ev: &Event) {
         if self.game_over {
             return;
         }
-        match ev {
-            Event::Drain(_) => self.on_drain(table),
+        if let Event::Drain { .. } = ev {
+            self.on_drain(table);
         }
     }
 

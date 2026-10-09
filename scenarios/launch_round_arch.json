@@ -1,0 +1,13 @@
+{
+  "description": "A launched ball follows the outer wall round the top arch, comes down the left side and drains.",
+  "table": "../tables/simple.json",
+  "duration": 4.0,
+  "inputs": [{ "at": 0.2, "press": "launch" }],
+  "expect": [
+    {"event": "launch", "between": [0.2, 0.2]},
+    {"enters": {"min": [0.15, 1.0], "max": [0.37, 1.07]}, "between": [0.2, 0.8]},
+    {"enters": {"min": [0.0, 0.3], "max": [0.05, 0.7]}, "between": [0.3, 1.2]},
+    {"sequence": ["launch", "touch outer_wall", "drain"]},
+    {"event": "drain", "between": [0.5, 4.0]}
+  ]
+}

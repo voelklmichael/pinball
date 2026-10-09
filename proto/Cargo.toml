@@ -1,0 +1,11 @@
+[package]
+name = "proto"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+env_logger = { version = "0.11.11", default-features = false, features = ["auto-color", "humantime"] }
+log = "0.4.34"
+macroquad = "0.4.16"
+engine = { path = "../engine" }
+scenario = { path = "../scenario" }

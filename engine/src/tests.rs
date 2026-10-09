@@ -21,11 +21,11 @@ fn run(table: &mut Table, secs: f32) -> Run {
     let mut trace = Vec::new();
     let mut events = Vec::new();
     for i in 0..(secs * PHYSICS_HZ) as usize {
-        events.extend(table.step());
-        if i % 4 == 0 {
-            if let Some(b) = table.balls.first() {
-                trace.push(table.ball_pos(b));
-            }
+        events.extend(table.step().into_iter().map(|t| t.event));
+        if i % 4 == 0
+            && let Some(b) = table.balls.first()
+        {
+            trace.push(table.ball_pos(b));
         }
         if table.balls.is_empty() {
             break;
@@ -78,7 +78,7 @@ fn flippers_hit_the_ball() {
         let mut max_vy: f32 = 0.0;
         for _ in 0..(0.1 * PHYSICS_HZ) as usize {
             table.step();
-            let b = table.balls.iter().find(|b| b.body == ball).unwrap();
+            let b = table.balls.iter().find(|b| b.number == ball).unwrap();
             max_vy = max_vy.max(table.ball_vel(b).y);
         }
         assert!(max_vy > 1.5, "flipper {i} hit too weak: vy {max_vy}");
@@ -90,7 +90,7 @@ fn ball_drains_between_flippers() {
     let mut table = Table::new(simple());
     table.add_ball(Vector::new(table.layout.size.x / 2.0, 0.30), Vector::ZERO);
     let r = run(&mut table, 2.0);
-    assert!(matches!(r.events.as_slice(), [Event::Drain(_)]), "no drain: {:?}", r.events);
+    assert!(r.events.iter().any(|e| matches!(e, Event::Drain { .. })), "no drain: {:?}", r.events);
 }
 
 /// Prints the ball speed off the left flipper for different contact points.

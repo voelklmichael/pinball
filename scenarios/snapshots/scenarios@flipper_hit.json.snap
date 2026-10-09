@@ -1,0 +1,23 @@
+---
+source: scenario/tests/scenarios.rs
+description: A ball resting on the left flipper is hit when the flipper goes up and flies up the table.
+input_file: scenarios/flipper_hit.json
+---
+  0.000  serve ball#1 at (0.205, 0.150)
+  0.046  touch ball#1 left_flipper
+  0.150  flipper_up left_flipper
+  0.173  leave ball#1 left_flipper
+  0.285  touch ball#1 center_post
+  0.290  leave ball#1 center_post
+  0.342  touch ball#1 left_island
+  0.346  leave ball#1 left_island
+  0.400  flipper_down left_flipper
+  0.423  touch ball#1 outer_wall
+  0.431  leave ball#1 outer_wall
+  0.600  touch ball#1 outer_wall
+  0.610  leave ball#1 outer_wall
+  1.196  touch ball#1 outer_wall
+  1.215  leave ball#1 outer_wall
+  1.271  touch ball#1 outer_wall
+  1.290  leave ball#1 outer_wall
+    end  ball#1 at (0.480, 0.546) v=(-0.11, -1.59)

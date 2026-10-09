@@ -1,0 +1,12 @@
+{
+  "description": "A ball dropped just right of the centre post bounces off it to the right.",
+  "table": "../tables/simple.json",
+  "duration": 1.0,
+  "serve": false,
+  "balls": [{ "position": [0.27, 0.72] }],
+  "expect": [
+    {"event": "touch center_post", "between": [0.2, 0.3]},
+    {"enters": {"min": [0.3, 0.2], "max": [0.52, 0.6]}, "between": [0.25, 1.0]},
+    {"never": "touch left_island"}
+  ]
+}

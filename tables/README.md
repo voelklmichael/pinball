@@ -3,7 +3,7 @@
 A table is a JSON file. Run it with
 
 ```
-cargo run -p pinball-proto -- tables/simple.json
+cargo run -p proto -- tables/simple.json
 ```
 
 and press **F5** in the game to reload the file after editing it.

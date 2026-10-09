@@ -1,0 +1,13 @@
+{
+  "description": "A ball resting on the left flipper is hit when the flipper goes up and flies up the table.",
+  "table": "../tables/simple.json",
+  "duration": 1.5,
+  "serve": false,
+  "balls": [{ "position": [0.205, 0.15] }],
+  "inputs": [{ "at": 0.15, "press": "left" }, { "at": 0.4, "release": "left" }],
+  "expect": [
+    {"event": "touch left_flipper", "between": [0.0, 0.15]},
+    {"event": "flipper_up left_flipper", "between": [0.15, 0.15]},
+    {"enters": {"min": [0.0, 0.6], "max": [0.52, 1.07]}, "between": [0.15, 0.5]}
+  ]
+}

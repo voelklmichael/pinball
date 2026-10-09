@@ -366,7 +366,7 @@ impl WallCurve for Bezier {
     wall_props!("bezier");
     fn sample(&self, tolerance: f32) -> Result<(Vec<Vector>, bool), String> {
         let n = self.points.len();
-        check(n >= 4 && (n - 1) % 3 == 0, || {
+        check(n >= 4 && (n - 1).is_multiple_of(3), || {
             format!("needs 3n+1 points (4, 7, 10, ...): start, 2 controls, end, ...; got {n}")
         })?;
         let mut pts = vec![v(self.points[0])];
