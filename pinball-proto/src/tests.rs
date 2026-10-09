@@ -4,7 +4,7 @@
 
 use rapier2d::math::Vector;
 
-use crate::layout::{self, Layer, Sw};
+use crate::layout::{self, Sw};
 use crate::physics::{Event, PHYSICS_HZ, Table};
 
 struct Run {
@@ -57,9 +57,9 @@ const FROM_RIGHT: (f32, f32) = (0.29, 0.17);
 #[test]
 fn shots_reach_their_targets() {
     let shots: Vec<(&str, (f32, f32), (f32, f32), Vec<Sw>)> = vec![
-        ("left ramp", FROM_RIGHT, (0.0895, 0.62), vec![Sw::RampEnter(Layer::RampL), Sw::RampMade(Layer::RampL)]),
-        ("centre ramp", FROM_LEFT, (0.2425, 0.62), vec![Sw::RampEnter(Layer::RampC), Sw::RampMade(Layer::RampC)]),
-        ("right ramp", FROM_LEFT, (0.3275, 0.62), vec![Sw::RampMade(Layer::RampR), Sw::UpperExit]),
+        ("left ramp", FROM_RIGHT, (0.0895, 0.62), vec![Sw::RampEnter(layout::RAMP_L), Sw::RampMade(layout::RAMP_L)]),
+        ("centre ramp", FROM_LEFT, (0.2425, 0.62), vec![Sw::RampEnter(layout::RAMP_C), Sw::RampMade(layout::RAMP_C)]),
+        ("right ramp", FROM_LEFT, (0.3275, 0.62), vec![Sw::RampMade(layout::RAMP_R), Sw::UpperExit]),
         ("scoop", FROM_RIGHT, (0.169, 0.66), vec![Sw::Scoop]),
         ("left orbit", FROM_RIGHT, (0.02, 0.56), vec![Sw::LeftOrbit, Sw::RightOrbit]),
         ("right orbit", FROM_LEFT, (0.461, 0.56), vec![Sw::RightOrbit, Sw::LeftOrbit]),
@@ -203,13 +203,14 @@ fn table_file_errors_name_the_problem() {
     let base = |elements: &str| {
         format!(
             r#"{{"size": [0.5, 1.0], "angle_deg": 6.5, "ball": {{"radius": 0.0135}},
-               "launcher": {{"position": [0.4, 0.3], "start_velocity": [0, 3]}}, "elements": [{elements}]}}"#
+               "launcher": {{"position": [0.4, 0.3], "start_velocity": [0, 3]}},
+               "layers": [{{"id": "playfield", "elements": [{elements}]}}]}}"#
         )
     };
     let e = err(&base(r#"{"type": "line", "from": [0, 0], "too": [1, 1]}"#));
     assert!(e.contains("unknown field `too`"), "{e}");
     let e = err(&base(r#"{"type": "line", "from": [0, 0], "to": [0, 1]}, {"type": "bezier", "points": [[0, 0], [1, 1]]}"#));
-    assert!(e.contains("elements[1] (bezier)") && e.contains("3n+1"), "{e}");
+    assert!(e.contains("layers[0] (playfield): elements[1] (bezier)") && e.contains("3n+1"), "{e}");
     let e = err(&base(r#"{"type": "spline", "points": []}"#));
     assert!(e.contains("unknown variant `spline`"), "{e}");
     let e = err(&base(
@@ -223,4 +224,29 @@ fn table_file_errors_name_the_problem() {
         r#"{"type": "line", "id": "a", "from": [0, 0], "to": [0, 1]}, {"type": "line", "id": "a", "from": [1, 0], "to": [1, 1]}"#,
     ));
     assert!(e.contains(r#"elements[1] (line): id "a" is used twice"#), "{e}");
+    // Layer ids share the namespace with element ids.
+    let e = err(&base(r#"{"type": "line", "id": "playfield", "from": [0, 0], "to": [0, 1]}"#));
+    assert!(e.contains(r#"id "playfield" is used twice"#), "{e}");
+}
+
+/// Prints which right-orbit shots make the full loop, for different rolling
+/// resistances and speeds.
+#[test]
+#[ignore]
+fn orbit_vs_rolling_resistance() {
+    for rr in [0.0, 0.003, 0.005, 0.0075, 0.01] {
+        for speed in [3.6, 3.8, 4.0, 4.2, 4.4] {
+            let mut l = layout::bavaria();
+            for def in &mut l.layers {
+                def.rolling_resistance = rr;
+            }
+            let mut table = Table::new(l);
+            let from = Vector::new(FROM_LEFT.0, FROM_LEFT.1);
+            let dir = (Vector::new(0.461, 0.56) - from).normalize();
+            table.add_ball(from, dir * speed);
+            let r = run(&mut table, 3.0);
+            print!("rr={rr:<6} v={speed}: {:<5} ", r.events.contains(&Sw::LeftOrbit));
+        }
+        println!();
+    }
 }

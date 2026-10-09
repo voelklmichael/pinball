@@ -25,7 +25,7 @@ Unknown fields are errors, so a typo is reported instead of silently ignored.
 | `curve_tolerance` | no | `0.0005` | Curves are turned into short straight segments for the physics; this is how far (m) those may stray from the true curve. Anything under ~1 mm is invisible in play |
 | `ball` | yes | | See below |
 | `launcher` | yes | | See below |
-| `elements` | yes | | List of walls and flippers |
+| `layers` | yes | | List of layers, see below. The first one is the playfield, where new balls start |
 
 **`ball`**
 
@@ -37,6 +37,19 @@ Unknown fields are errors, so a typo is reported instead of silently ignored.
 
 **`launcher`:** a new ball waits at `position` and is shot off at `start_velocity` (`[vx, vy]`, m/s) when you press Space.
 
+## Layers
+
+A layer is a surface the ball rolls on: the playfield, a ramp, an upper level. A ball only touches the elements on its own layer, so ramps can pass over the playfield and over each other. (Moving the ball between layers comes with ramps; for now only the first layer is played on.)
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `id` | yes | | Name of the layer. Shares one namespace with element ids |
+| `rolling_resistance` | no | `0.01` | The ball slows down by `rolling_resistance × gravity` while rolling on this layer. Wire ramps can differ from plastic or wood |
+| `defaults` | no | | `{ "restitution": …, "friction": … }` for walls on this layer that don't set their own |
+| `elements` | yes | | Walls and flippers on this layer |
+
+At most 32 layers.
+
 ## Walls
 
 Every wall has `type`, its geometry, and optionally:
@@ -44,8 +57,8 @@ Every wall has `type`, its geometry, and optionally:
 | Field | Default | Meaning |
 |---|---|---|
 | `id` | none | Name the rules refer to it by, e.g. `"left_ramp"`. Must be unique in the table |
-| `restitution` | `0.35` | Bounce, 0 to 1 |
-| `friction` | `0.075` | Friction along the wall |
+| `restitution` | layer default, else `0.35` | Bounce, 0 to 1 |
+| `friction` | layer default, else `0.075` | Friction along the wall |
 
 | `type` | Fields |
 |---|---|

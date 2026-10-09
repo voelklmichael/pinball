@@ -36,13 +36,12 @@ impl View {
 }
 
 fn layer_color(l: Layer) -> Color {
-    match l {
-        Layer::Playfield => Color::from_rgba(200, 210, 230, 255),
-        Layer::RampL => Color::from_rgba(120, 190, 255, 255),
-        Layer::RampC => Color::from_rgba(255, 140, 120, 255),
-        Layer::RampR => Color::from_rgba(140, 230, 140, 255),
-        Layer::Upper => Color::from_rgba(200, 160, 255, 255),
+    const ABOVE: [(u8, u8, u8); 4] = [(120, 190, 255), (255, 140, 120), (140, 230, 140), (200, 160, 255)];
+    if l == Layer::PLAYFIELD {
+        return Color::from_rgba(200, 210, 230, 255);
     }
+    let (r, g, b) = ABOVE[(l.index() - 1) % ABOVE.len()];
+    Color::from_rgba(r, g, b, 255)
 }
 
 fn polyline(view: &View, pts: &[PVec], closed: bool, width: f32, color: Color) {
@@ -82,8 +81,8 @@ pub fn draw(table: &Table, game: &Game) {
     draw_rectangle(top_left.x, top_left.y, size.x * view.scale, size.y * view.scale, Color::from_rgba(24, 40, 64, 255));
 
     // --- Playfield layer ---
-    for w in layout.walls.iter().filter(|w| w.layer == Layer::Playfield) {
-        polyline(&view, &w.pts, w.closed, view.px(0.004), layer_color(Layer::Playfield));
+    for w in layout.walls.iter().filter(|w| w.layer == Layer::PLAYFIELD) {
+        polyline(&view, &w.pts, w.closed, view.px(0.004), layer_color(Layer::PLAYFIELD));
     }
     for (i, b) in layout.bumpers.iter().enumerate() {
         let c = view.p(b.center);
@@ -135,7 +134,7 @@ pub fn draw(table: &Table, game: &Game) {
             fill_convex(&pts, ORANGE);
         }
     };
-    draw_flippers(Layer::Playfield);
+    draw_flippers(Layer::PLAYFIELD);
 
     // Plunger charge, as a bar under the launch position.
     if table.plunger_charge > 0.0 {
@@ -150,33 +149,33 @@ pub fn draw(table: &Table, game: &Game) {
             draw_ball(&view, table.ball_pos(b), layout.ball.radius, b.height);
         }
     };
-    balls_on(Layer::Playfield);
+    balls_on(Layer::PLAYFIELD);
 
-    // --- Ramps, then the upper level, each with the balls on it ---
-    for r in &layout.ramps {
-        let col = layer_color(r.layer);
-        let fill = Color::new(col.r, col.g, col.b, 0.18);
-        for k in 0..r.center.len() - 1 {
-            let (a, b, c, d) = (view.p(r.left[k]), view.p(r.left[k + 1]), view.p(r.right[k + 1]), view.p(r.right[k]));
-            draw_triangle(a, b, c, fill);
-            draw_triangle(a, c, d, fill);
+    // --- Layers above the playfield in order, each with what's on it ---
+    for (i, def) in layout.layers.iter().enumerate().skip(1) {
+        let layer = Layer(i as u8);
+        let col = layer_color(layer);
+        let area: Vec<Vec2> = def.outline.iter().map(|&p| view.p(p)).collect();
+        fill_convex(&area, Color::new(col.r, col.g, col.b, 0.25));
+        for r in layout.ramps.iter().filter(|r| r.layer == layer) {
+            let fill = Color::new(col.r, col.g, col.b, 0.18);
+            for k in 0..r.center.len() - 1 {
+                let (a, b, c, d) =
+                    (view.p(r.left[k]), view.p(r.left[k + 1]), view.p(r.right[k + 1]), view.p(r.right[k]));
+                draw_triangle(a, b, c, fill);
+                draw_triangle(a, c, d, fill);
+            }
         }
-        polyline(&view, &r.left, false, view.px(0.003), col);
-        polyline(&view, &r.right, false, view.px(0.003), col);
-        balls_on(r.layer);
+        for w in layout.walls.iter().filter(|w| w.layer == layer) {
+            polyline(&view, &w.pts, w.closed, view.px(0.0035), col);
+        }
+        for s in layout.standups.iter().filter(|s| s.layer == layer) {
+            let (a, b) = (view.p(s.a), view.p(s.b));
+            draw_line(a.x, a.y, b.x, b.y, view.px(0.006), MAGENTA);
+        }
+        draw_flippers(layer);
+        balls_on(layer);
     }
-    let upper: Vec<Vec2> = layout.upper_outline.iter().map(|&p| view.p(p)).collect();
-    let up_col = layer_color(Layer::Upper);
-    fill_convex(&upper, Color::new(up_col.r, up_col.g, up_col.b, 0.25));
-    for w in layout.walls.iter().filter(|w| w.layer == Layer::Upper) {
-        polyline(&view, &w.pts, w.closed, view.px(0.004), up_col);
-    }
-    for s in &layout.standups {
-        let (a, b) = (view.p(s.a), view.p(s.b));
-        draw_line(a.x, a.y, b.x, b.y, view.px(0.006), MAGENTA);
-    }
-    draw_flippers(Layer::Upper);
-    balls_on(Layer::Upper);
 
     // --- HUD ---
     let hud = format!(

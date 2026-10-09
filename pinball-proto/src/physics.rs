@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use rapier2d::prelude::*;
 
-use crate::layout::{Button, FlipperDef, Layer, Layout, Shape, Sw, UPPER_HEIGHT};
+use crate::layout::{Button, FlipperDef, Layer, Layout, Shape, Sw};
 
 pub const PHYSICS_HZ: f32 = 480.0;
 const BUMPER_KICK: f32 = 1.6;
@@ -180,7 +180,7 @@ impl Table {
                 ColliderBuilder::ball(b.radius)
                     .translation(b.center)
                     .restitution(0.2)
-                    .collision_groups(layer_groups(Layer::Playfield)),
+                    .collision_groups(layer_groups(Layer::PLAYFIELD)),
                 Some(ground),
             );
             elems.insert(h, Elem::Bumper(i));
@@ -190,13 +190,13 @@ impl Table {
             world.insert_collider(
                 ColliderBuilder::polyline(vec![s.b, s.c, s.a], None)
                     .restitution(0.3)
-                    .collision_groups(layer_groups(Layer::Playfield)),
+                    .collision_groups(layer_groups(Layer::PLAYFIELD)),
                 Some(ground),
             );
             let h = world.insert_collider(
                 ColliderBuilder::segment(s.a, s.b)
                     .restitution(0.3)
-                    .collision_groups(layer_groups(Layer::Playfield)),
+                    .collision_groups(layer_groups(Layer::PLAYFIELD)),
                 Some(ground),
             );
             elems.insert(h, Elem::Sling(i));
@@ -208,7 +208,7 @@ impl Table {
                 ColliderBuilder::cuboid(d.half.x, d.half.y)
                     .translation(d.center)
                     .restitution(0.2)
-                    .collision_groups(layer_groups(Layer::Playfield)),
+                    .collision_groups(layer_groups(Layer::PLAYFIELD)),
                 Some(ground),
             );
             elems.insert(h, Elem::Drop(i));
@@ -243,7 +243,7 @@ impl Table {
                     .translation(hole.center)
                     .sensor(true)
                     .active_events(ActiveEvents::COLLISION_EVENTS)
-                    .collision_groups(groups(Layer::Playfield.bit(), u32::MAX)),
+                    .collision_groups(groups(Layer::PLAYFIELD.bit(), u32::MAX)),
                 Some(ground),
             );
             elems.insert(h, Elem::Hole(i));
@@ -313,8 +313,8 @@ impl Table {
                 .friction_combine_rule(CoefficientCombineRule::Multiply)
                 .active_events(ActiveEvents::COLLISION_EVENTS),
         );
-        let mut ball = Ball { body, collider, layer: Layer::Playfield, height: 0.0, held: None, waiting: false };
-        set_layer(&mut self.world, &mut ball, Layer::Playfield);
+        let mut ball = Ball { body, collider, layer: Layer::PLAYFIELD, height: 0.0, held: None, waiting: false };
+        set_layer(&mut self.world, &mut ball, Layer::PLAYFIELD);
         self.balls.push(ball);
         body
     }
@@ -400,20 +400,26 @@ impl Table {
             self.world.bodies[f.body].set_next_kinematic_position(Pose::new(f.def.pivot, f.angle));
         }
 
-        // Ramp inclines: gravity along the ramp, on top of the table tilt.
-        for b in &mut self.balls {
-            b.height = match b.layer {
-                Layer::Playfield => 0.0,
-                Layer::Upper => UPPER_HEIGHT,
-                layer => {
-                    let body = &mut self.world.bodies[b.body];
-                    let ramp = self.layout.ramps.iter().find(|r| r.layer == layer).unwrap();
+        let g = self.layout.gravity;
+        for b in self.balls.iter_mut().filter(|b| !b.waiting && b.held.is_none()) {
+            let body = &mut self.world.bodies[b.body];
+            let layer = &self.layout.layers[b.layer.index()];
+            let mut v = body.linvel();
+            // Ramp inclines: gravity along the ramp, on top of the table tilt.
+            b.height = match self.layout.ramps.iter().find(|r| r.layer == b.layer) {
+                Some(ramp) => {
                     let (h, tangent, slope) = ramp.sample(body.translation());
-                    let v = body.linvel() - tangent * (self.layout.gravity * slope * dt);
-                    body.set_linvel(v, true);
+                    v -= tangent * (g * slope * dt);
                     h
                 }
+                None => layer.height,
             };
+            // Rolling resistance: a constant slowdown that never reverses the ball.
+            let speed = v.length();
+            if speed > 0.0 {
+                v *= (speed - layer.rolling_resistance * g * dt).max(0.0) / speed;
+            }
+            body.set_linvel(v, true);
         }
 
         self.world.step_with_events(&self.hooks, &self.collector);

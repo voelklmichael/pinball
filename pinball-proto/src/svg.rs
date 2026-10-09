@@ -10,13 +10,8 @@ use crate::layout::{Layer, Layout, Shape};
 const SCALE: f32 = 1000.0; // px per metre
 
 fn layer_color(l: Layer) -> &'static str {
-    match l {
-        Layer::Playfield => "#222",
-        Layer::RampL => "#1f77b4",
-        Layer::RampC => "#d62728",
-        Layer::RampR => "#2ca02c",
-        Layer::Upper => "#9467bd",
-    }
+    const ABOVE: [&str; 4] = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd"];
+    if l == Layer::PLAYFIELD { "#222" } else { ABOVE[(l.index() - 1) % ABOVE.len()] }
 }
 
 /// SVG coordinates have y pointing down; `top` is the table height.
@@ -52,7 +47,10 @@ pub fn render(layout: &Layout, traces: &[(Vec<Vector>, &str)]) -> String {
     let poly = |s: &mut String, pts: &[Vector], closed, style: &str| poly(s, top, pts, closed, style);
     let circle = |s: &mut String, c, r, style: &str| circle(s, top, c, r, style);
 
-    poly(&mut s, &layout.upper_outline, true, "fill:#9467bd22;stroke:none");
+    for (i, def) in layout.layers.iter().enumerate() {
+        let c = layer_color(Layer(i as u8));
+        poly(&mut s, &def.outline, true, &format!("fill:{c};fill-opacity:0.13;stroke:none"));
+    }
     for r in &layout.ramps {
         let mut outline = r.left.clone();
         outline.extend(r.right.iter().rev());
@@ -62,7 +60,7 @@ pub fn render(layout: &Layout, traces: &[(Vec<Vector>, &str)]) -> String {
         writeln!(s, "</g>").unwrap();
     }
     for w in &layout.walls {
-        let width = if w.layer == Layer::Playfield { 3 } else { 2 };
+        let width = if w.layer == Layer::PLAYFIELD { 3 } else { 2 };
         poly(&mut s, &w.pts, w.closed, &format!("stroke:{};stroke-width:{width}", layer_color(w.layer)));
     }
     for sen in &layout.sensors {
@@ -99,7 +97,8 @@ pub fn render(layout: &Layout, traces: &[(Vec<Vector>, &str)]) -> String {
     }
     for f in &layout.flippers {
         let pose = Pose::new(f.pivot, f.rest);
-        let pts: Vec<Vector> = f.outline.iter().map(|&p| pose * p).collect();
+        let hull = rapier2d::parry::transformation::convex_hull(&f.outline);
+        let pts: Vec<Vector> = hull.iter().map(|&p| pose * p).collect();
         poly(&mut s, &pts, true, "fill:#f60;stroke:none");
     }
     for (path, color) in traces {

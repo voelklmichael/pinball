@@ -12,7 +12,7 @@ use std::f32::consts::TAU;
 use rapier2d::math::Vector;
 use serde::Deserialize;
 
-use crate::layout::{BallDef, Button, FlipperDef, Launcher, Layer, Layout, Wall};
+use crate::layout::{BallDef, Button, FlipperDef, Launcher, Layer, LayerDef, Layout, Wall};
 
 type P = [f32; 2];
 
@@ -34,7 +34,35 @@ pub struct TableFile {
     pub curve_tolerance: f32,
     pub ball: BallSpec,
     pub launcher: LauncherSpec,
+    /// The first layer is the playfield, where new balls start.
+    pub layers: Vec<LayerSpec>,
+}
+
+/// A surface the ball rolls on, with the elements on it. A ball only touches
+/// elements on its own layer.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LayerSpec {
+    pub id: String,
+    /// The ball slows down by `rolling_resistance * gravity` (m/s²) while
+    /// rolling on this layer.
+    #[serde(default = "default_rolling_resistance")]
+    pub rolling_resistance: f32,
+    /// Restitution and friction for walls on this layer that don't set their own.
+    #[serde(default)]
+    pub defaults: WallDefaults,
     pub elements: Vec<Element>,
+}
+
+fn default_rolling_resistance() -> f32 {
+    0.01
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct WallDefaults {
+    pub restitution: Option<f32>,
+    pub friction: Option<f32>,
 }
 
 fn default_gravity() -> f32 {
@@ -451,32 +479,53 @@ impl TableFile {
             "launcher.position is outside the table".into()
         })?;
 
+        check(!self.layers.is_empty(), || "needs at least one layer".into())?;
+        check(self.layers.len() <= Layer::MAX, || format!("at most {} layers", Layer::MAX))?;
+
+        let mut layers = Vec::new();
         let mut walls = Vec::new();
         let mut flippers = Vec::new();
+        // Layer and element ids share one namespace.
         let mut ids = std::collections::HashSet::new();
-        for (i, el) in self.elements.into_iter().enumerate() {
-            let ctx = |e: String| format!("elements[{i}] ({}): {e}", el.kind());
-            let id = match &el {
-                Element::Flipper(f) => f.id.clone(),
-                _ => el.wall().unwrap().props().id.map(str::to_owned),
-            };
-            if let Some(id) = &id {
-                check(!id.is_empty(), || "id is empty".into()).map_err(ctx)?;
-                check(ids.insert(id.clone()), || format!("id \"{id}\" is used twice")).map_err(ctx)?;
-            }
-            match (&el, el.wall()) {
-                (Element::Flipper(f), _) => flippers.push(flipper(f, tolerance).map_err(ctx)?),
-                (_, Some(wall)) => {
-                    let props = wall.props();
-                    let restitution = props.restitution.unwrap_or(WALL_RESTITUTION);
-                    let friction = props.friction.unwrap_or(WALL_FRICTION);
-                    check_coefficient("restitution", restitution).map_err(ctx)?;
-                    check(friction >= 0.0, || "friction must be >= 0".into()).map_err(ctx)?;
-                    let (pts, closed) = wall.sample(tolerance).map_err(ctx)?;
-                    walls.push(Wall { id, layer: Layer::Playfield, pts, closed, restitution, friction });
+        let mut claim = |id: &str| -> Result<(), String> {
+            check(!id.is_empty(), || "id is empty".into())?;
+            check(ids.insert(id.to_owned()), || format!("id \"{id}\" is used twice"))
+        };
+        for (li, spec) in self.layers.into_iter().enumerate() {
+            let layer = Layer(li as u8);
+            let lctx = |e: String| format!("layers[{li}] ({}): {e}", spec.id);
+            claim(&spec.id).map_err(lctx)?;
+            check(spec.rolling_resistance >= 0.0, || "rolling_resistance must be >= 0".into()).map_err(lctx)?;
+            for (i, el) in spec.elements.iter().enumerate() {
+                let ctx = |e: String| lctx(format!("elements[{i}] ({}): {e}", el.kind()));
+                let id = match el {
+                    Element::Flipper(f) => f.id.clone(),
+                    _ => el.wall().unwrap().props().id.map(str::to_owned),
+                };
+                if let Some(id) = &id {
+                    claim(id).map_err(ctx)?;
                 }
-                (_, None) => unreachable!("only flippers are not walls"),
+                match (el, el.wall()) {
+                    (Element::Flipper(f), _) => flippers.push(flipper(f, layer, tolerance).map_err(ctx)?),
+                    (_, Some(wall)) => {
+                        let props = wall.props();
+                        let restitution =
+                            props.restitution.or(spec.defaults.restitution).unwrap_or(WALL_RESTITUTION);
+                        let friction = props.friction.or(spec.defaults.friction).unwrap_or(WALL_FRICTION);
+                        check_coefficient("restitution", restitution).map_err(ctx)?;
+                        check(friction >= 0.0, || "friction must be >= 0".into()).map_err(ctx)?;
+                        let (pts, closed) = wall.sample(tolerance).map_err(ctx)?;
+                        walls.push(Wall { id, layer, pts, closed, restitution, friction });
+                    }
+                    (_, None) => unreachable!("only flippers are not walls"),
+                }
             }
+            layers.push(LayerDef {
+                name: spec.id,
+                height: 0.0,
+                rolling_resistance: spec.rolling_resistance,
+                outline: Vec::new(),
+            });
         }
 
         Ok(Layout {
@@ -486,6 +535,7 @@ impl TableFile {
             gravity: self.gravity,
             ball: BallDef { radius: self.ball.radius, mass: self.ball.mass, restitution: self.ball.restitution },
             launcher: Launcher { position, start_velocity: v(self.launcher.start_velocity), charged: false },
+            layers,
             walls,
             flippers,
             ramps: Vec::new(),
@@ -496,12 +546,11 @@ impl TableFile {
             standups: Vec::new(),
             gates: Vec::new(),
             holes: Vec::new(),
-            upper_outline: Vec::new(),
         })
     }
 }
 
-fn flipper(f: &Flipper, tolerance: f32) -> Result<FlipperDef, String> {
+fn flipper(f: &Flipper, layer: Layer, tolerance: f32) -> Result<FlipperDef, String> {
     check(f.speed_deg_per_s > 0.0, || "speed_deg_per_s must be > 0".into())?;
     check_coefficient("restitution", f.restitution)?;
     check(!f.shape.is_empty(), || "shape is empty".into())?;
@@ -528,7 +577,7 @@ fn flipper(f: &Flipper, tolerance: f32) -> Result<FlipperDef, String> {
         speed: f.speed_deg_per_s.to_radians(),
         restitution: f.restitution,
         friction: f.friction,
-        layer: Layer::Playfield,
+        layer,
         button: match f.key {
             Key::Left => Button::Left,
             Key::Right => Button::Right,

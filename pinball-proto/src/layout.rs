@@ -12,25 +12,47 @@ pub const LANE_X: f32 = 0.482;
 /// Height of the Neuschwanstein upper level above the playfield.
 pub const UPPER_HEIGHT: f32 = 0.065;
 
-/// Physics layer. A ball only collides with things on its own layer; it switches
-/// layer when it crosses a sensor at a ramp entrance or exit.
+/// Physics layer: an index into [`Layout::layers`]. A ball only collides with
+/// things on its own layer; it switches layer when it crosses a sensor at a
+/// ramp entrance or exit.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub enum Layer {
-    Playfield,
-    /// Zugspitzbahn (left ramp), returns to the right inlane.
-    RampL,
-    /// Bierzelt (centre ramp), returns to the left inlane.
-    RampC,
-    /// Steinerne Brücke (right ramp), leads up to the upper level.
-    RampR,
-    /// Neuschwanstein upper level.
-    Upper,
-}
+pub struct Layer(pub u8);
 
 impl Layer {
+    /// The first layer; new balls start here.
+    pub const PLAYFIELD: Layer = Layer(0);
+    /// Collision groups are 32-bit masks.
+    pub const MAX: usize = 32;
+
     pub fn bit(self) -> u32 {
-        1 << self as u32
+        1 << self.0
     }
+
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+/// The built-in Bavarian table's layers (see [`bavaria`]).
+/// Zugspitzbahn (left ramp), returns to the right inlane.
+pub const RAMP_L: Layer = Layer(1);
+/// Bierzelt (centre ramp), returns to the left inlane.
+pub const RAMP_C: Layer = Layer(2);
+/// Steinerne Brücke (right ramp), leads up to the upper level.
+pub const RAMP_R: Layer = Layer(3);
+/// Neuschwanstein upper level.
+pub const UPPER: Layer = Layer(4);
+
+pub struct LayerDef {
+    #[allow(dead_code)] // read by the rules engine, which is not built yet
+    pub name: String,
+    /// Height above the playfield. Ramps use their height profile instead.
+    pub height: f32,
+    /// Rolling resistance coefficient: while rolling on this layer the ball
+    /// slows down by `rolling_resistance * gravity` (m/s²).
+    pub rolling_resistance: f32,
+    /// Area to shade when drawing, e.g. an upper level; may be empty.
+    pub outline: Vec<Vector>,
 }
 
 /// Switches the rules can react to.
@@ -47,7 +69,7 @@ pub enum Sw {
     LeftOrbit,
     RightOrbit,
     RampEnter(Layer),
-    /// The ball reached the end of a ramp (for RampR: arrived on the upper level).
+    /// The ball reached the end of a ramp (for RAMP_R: arrived on the upper level).
     RampMade(Layer),
     Scoop,
     /// Standup target on the upper level.
@@ -239,6 +261,8 @@ pub struct Layout {
     pub gravity: f32,
     pub ball: BallDef,
     pub launcher: Launcher,
+    /// At most [`Layer::MAX`]; the first is the playfield.
+    pub layers: Vec<LayerDef>,
     pub walls: Vec<Wall>,
     pub ramps: Vec<Ramp>,
     pub sensors: Vec<Sensor>,
@@ -249,8 +273,10 @@ pub struct Layout {
     pub gates: Vec<Gate>,
     pub flippers: Vec<FlipperDef>,
     pub holes: Vec<Hole>,
-    /// Outline of the upper level, for drawing (empty if there is none).
-    pub upper_outline: Vec<Vector>,
+}
+
+fn layer(name: &str, height: f32, outline: Vec<Vector>) -> LayerDef {
+    LayerDef { name: name.into(), height, rolling_resistance: 0.01, outline }
 }
 
 fn v(x: f32, y: f32) -> Vector {
@@ -316,12 +342,11 @@ fn ramp(layer: Layer, ctrl: &[(f32, f32, f32)], width: f32) -> Ramp {
 /// The Bavarian table. Coordinates are worked out in DESIGN.md's sketch order:
 /// bottom (flippers, slings, lanes), shot line, top (pops, rollovers), ramps, upper level.
 pub fn bavaria() -> Layout {
-    use Layer::*;
-    let pf = Playfield;
+    let pf = Layer::PLAYFIELD;
     let mut walls = Vec::new();
     let mut wall = |layer, pts: Vec<Vector>, closed| {
         // Ramp rails absorb hits; playfield walls are livelier.
-        let restitution = if layer == Playfield { 0.35 } else { 0.1 };
+        let restitution = if layer == pf { 0.35 } else { 0.1 };
         walls.push(Wall { id: None, layer, pts, closed, restitution, friction: 0.075 })
     };
 
@@ -369,13 +394,13 @@ pub fn bavaria() -> Layout {
     // Top lane posts (B-I-E-R).
     let lane_xs = [0.09, 0.13, 0.17, 0.21, 0.25];
     for x in lane_xs {
-        wall(pf, vec![v(x, 0.91), v(x, 0.955)], false);
+        wall(pf, vec![v(x, 0.885), v(x, 0.925)], false);
     }
 
     // Ramps. Each starts in its channel in the shot line.
     let ramps = vec![
         ramp(
-            RampL,
+            RAMP_L,
             &[
                 (0.0895, 0.625, 0.0),
                 (0.0895, 0.70, 0.015),
@@ -391,7 +416,7 @@ pub fn bavaria() -> Layout {
             0.055,
         ),
         ramp(
-            RampC,
+            RAMP_C,
             &[
                 (0.2425, 0.625, 0.0),
                 (0.2425, 0.70, 0.015),
@@ -407,7 +432,7 @@ pub fn bavaria() -> Layout {
             0.055,
         ),
         ramp(
-            RampR,
+            RAMP_R,
             &[
                 (0.3275, 0.625, 0.0),
                 (0.3275, 0.68, 0.012),
@@ -429,9 +454,9 @@ pub fn bavaria() -> Layout {
     // Neuschwanstein upper level. The right ramp climbs past it and drops the
     // ball in at the top right; it falls onto the upper flipper, and balls that
     // get past the flipper drop back to the playfield (UpperExit).
-    wall(Upper, vec![v(0.4175, 0.80), v(0.4175, 0.928)], false);
+    wall(UPPER, vec![v(0.4175, 0.80), v(0.4175, 0.928)], false);
     wall(
-        Upper,
+        UPPER,
         vec![v(0.405, 0.99), v(0.34, 0.995), v(0.30, 0.975), v(0.285, 0.94), v(0.285, 0.885), v(0.30, 0.872)],
         false,
     );
@@ -452,20 +477,20 @@ pub fn bavaria() -> Layout {
         switch: Some(LayerSwitch { dir: -Vector::Y, fwd: pf, back: layer }),
     };
     let mut sensors = vec![
-        ramp_entry(RampL, 0.062, 0.117),
-        ramp_entry(RampC, 0.215, 0.27),
-        ramp_entry(RampR, 0.30, 0.355),
-        ramp_exit(RampL, 0.42),
-        ramp_exit(RampC, 0.0625),
+        ramp_entry(RAMP_L, 0.062, 0.117),
+        ramp_entry(RAMP_C, 0.215, 0.27),
+        ramp_entry(RAMP_R, 0.30, 0.355),
+        ramp_exit(RAMP_L, 0.42),
+        ramp_exit(RAMP_C, 0.0625),
         Sensor {
             shape: rect(0.395, 0.93, 0.405, 0.99),
-            layers: both(RampR, Upper),
-            sw: Some(Sw::RampMade(RampR)),
-            switch: Some(LayerSwitch { dir: -Vector::X, fwd: Upper, back: RampR }),
+            layers: both(RAMP_R, UPPER),
+            sw: Some(Sw::RampMade(RAMP_R)),
+            switch: Some(LayerSwitch { dir: -Vector::X, fwd: UPPER, back: RAMP_R }),
         },
         Sensor {
             shape: rect(0.29, 0.78, 0.4175, 0.80),
-            layers: Upper.bit(),
+            layers: UPPER.bit(),
             sw: Some(Sw::UpperExit),
             switch: Some(LayerSwitch { dir: -Vector::Y, fwd: pf, back: pf }),
         },
@@ -475,7 +500,7 @@ pub fn bavaria() -> Layout {
         Sensor { shape: rect(0.005, 0.10, 0.035, 0.13), layers: pf.bit(), sw: Some(Sw::Kickback), switch: None },
     ];
     for i in 0..4 {
-        let c = v((lane_xs[i] + lane_xs[i + 1]) / 2.0, 0.93);
+        let c = v((lane_xs[i] + lane_xs[i + 1]) / 2.0, 0.905);
         sensors.push(Sensor {
             shape: Shape::Circle { c, r: 0.008 },
             layers: pf.bit(),
@@ -526,6 +551,13 @@ pub fn bavaria() -> Layout {
         angle: 6.5f32.to_radians(),
         gravity: 22.1,
         ball: BallDef { radius: BALL_R, mass: 0.08, restitution: 0.9 },
+        layers: vec![
+            layer("playfield", 0.0, Vec::new()),
+            layer("zugspitzbahn", 0.0, Vec::new()),
+            layer("bierzelt", 0.0, Vec::new()),
+            layer("steinerne_bruecke", 0.0, Vec::new()),
+            layer("neuschwanstein", UPPER_HEIGHT, upper_outline),
+        ],
         launcher: Launcher {
             position: v((LANE_X + TABLE_W) / 2.0, 0.03 + BALL_R + 0.002),
             start_velocity: v(0.0, 4.3),
@@ -537,7 +569,7 @@ pub fn bavaria() -> Layout {
         bumpers,
         slings: vec![sling(1.0), sling(-1.0)],
         drops,
-        standups: vec![Standup { a: v(0.35, 0.992), b: v(0.39, 0.987), layer: Upper, sw: Sw::Castle }],
+        standups: vec![Standup { a: v(0.35, 0.992), b: v(0.39, 0.987), layer: UPPER, sw: Sw::Castle }],
         gates: vec![
             // Top of the plunger lane: out only.
             // Slanted so orbit balls coming down the outer wall roll into the right orbit.
@@ -550,9 +582,8 @@ pub fn bavaria() -> Layout {
             flipper("left_flipper", v(left_x, 0.15), rest, -rest, main_outline.clone(), pf, Button::Left),
             // Mirrored: points down-left at rest (180° + 30°).
             flipper("right_flipper", v(right_x, 0.15), pi - rest, pi + rest, main_outline, pf, Button::Right),
-            flipper("upper_flipper", v(0.31, 0.865), -0.5, 0.5, tapered_outline(0.05, 0.009, 0.005), Upper, Button::Left),
+            flipper("upper_flipper", v(0.31, 0.865), -0.5, 0.5, tapered_outline(0.05, 0.009, 0.005), UPPER, Button::Left),
         ],
         holes: vec![Hole { center: v(0.169, 0.672), radius: 0.012, eject: v(0.05, -0.6), sw: Sw::Scoop }],
-        upper_outline,
     }
 }

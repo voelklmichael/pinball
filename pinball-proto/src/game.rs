@@ -1,7 +1,7 @@
 //! Minimal rules: scoring, B-I-E-R lanes, Kegelbahn reset, scoop, kickback,
 //! ball save and ball count. Region modes and multiball come later (DESIGN.md).
 
-use crate::layout::{Layer, Sw};
+use crate::layout::{RAMP_C, RAMP_L, RAMP_R, Sw};
 use crate::physics::{Event, Table};
 
 const BALLS_PER_GAME: u32 = 3;
@@ -121,9 +121,9 @@ impl Game {
             Sw::RampMade(layer) => {
                 self.bonus += 5_000;
                 match layer {
-                    Layer::RampL => self.say("ZUGSPITZBAHN"),
-                    Layer::RampC => self.say("BIERZELT"),
-                    Layer::RampR => self.say("TO NEUSCHWANSTEIN"),
+                    RAMP_L => self.say("ZUGSPITZBAHN"),
+                    RAMP_C => self.say("BIERZELT"),
+                    RAMP_R => self.say("TO NEUSCHWANSTEIN"),
                     _ => {}
                 }
             }
