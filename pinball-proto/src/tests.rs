@@ -43,7 +43,7 @@ fn write_svg(name: &str, traces: &[(Vec<Vector>, &str)]) {
 }
 
 fn write_svg_for(layout: &layout::Layout, name: &str, traces: &[(Vec<Vector>, &str)]) {
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/svg");
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/svg");
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(format!("{dir}/{name}.svg"), crate::svg::render(layout, traces)).unwrap();
 }
@@ -158,7 +158,7 @@ fn measure_flipper_speed() {
     }
 }
 
-const SIMPLE: &str = include_str!("../../../tables/simple.json");
+const SIMPLE: &str = include_str!("../../tables/simple.json");
 
 #[test]
 fn simple_table_loads_and_plays() {
