@@ -1,0 +1,41 @@
+{
+  "name": "Simple",
+  "size": [0.52, 1.07],
+  "angle_deg": 6.5,
+  "gravity": 22.0,
+  "ball": { "radius": 0.0135, "mass": 0.08, "restitution": 0.9 },
+  "inbound": { "position": [0.495, 0.30], "velocity": [0.0, 4.0] },
+  "elements": [
+    { "type": "line", "from": [0.0, 0.24], "to": [0.0, 0.81] },
+    { "type": "arc", "center": [0.26, 0.81], "radius": 0.26, "start_deg": 180, "end_deg": 0 },
+    { "type": "line", "from": [0.52, 0.81], "to": [0.52, 0.24] },
+
+    { "type": "bezier", "points": [[0.0, 0.24], [0.0, 0.20], [0.08, 0.19], [0.15, 0.158]] },
+    { "type": "bezier", "points": [[0.52, 0.24], [0.52, 0.20], [0.44, 0.19], [0.37, 0.158]] },
+
+    { "type": "arc", "center": [0.26, 0.62], "radius": 0.025, "start_deg": 0, "end_deg": 360, "restitution": 0.8 },
+    { "type": "arc", "center": [0.26, 0.86], "radius": [0.08, 0.03], "start_deg": 200, "end_deg": 340 },
+
+    { "type": "polyline", "points": [[0.06, 0.45], [0.12, 0.52], [0.06, 0.56]], "closed": true, "restitution": 0.6 },
+    { "type": "polyline", "points": [[0.46, 0.45], [0.40, 0.52], [0.46, 0.56]], "closed": true, "restitution": 0.6 },
+
+    {
+      "type": "flipper", "pivot": [0.1715, 0.14], "rest_deg": -30, "up_deg": 30, "key": "left",
+      "shape": [
+        { "type": "arc", "center": [0, 0], "radius": 0.011, "start_deg": 90, "end_deg": 270 },
+        { "type": "line", "from": [0, -0.011], "to": [0.075, -0.006] },
+        { "type": "arc", "center": [0.075, 0], "radius": 0.006, "start_deg": -90, "end_deg": 90 },
+        { "type": "line", "from": [0.075, 0.006], "to": [0, 0.011] }
+      ]
+    },
+    {
+      "type": "flipper", "pivot": [0.3485, 0.14], "rest_deg": 210, "up_deg": 150, "key": "right",
+      "shape": [
+        { "type": "arc", "center": [0, 0], "radius": 0.011, "start_deg": 90, "end_deg": 270 },
+        { "type": "line", "from": [0, -0.011], "to": [0.075, -0.006] },
+        { "type": "arc", "center": [0.075, 0], "radius": 0.006, "start_deg": -90, "end_deg": 90 },
+        { "type": "line", "from": [0.075, 0.006], "to": [0, 0.011] }
+      ]
+    }
+  ]
+}

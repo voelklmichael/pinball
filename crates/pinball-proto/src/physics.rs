@@ -6,15 +6,9 @@ use std::sync::Mutex;
 
 use rapier2d::prelude::*;
 
-use crate::layout::{BALL_R, Button, FlipperDef, Layer, Layout, Shape, Sw, UPPER_HEIGHT};
+use crate::layout::{Button, FlipperDef, Layer, Layout, Shape, Sw, UPPER_HEIGHT};
 
 pub const PHYSICS_HZ: f32 = 480.0;
-/// In-plane gravity. A real 6.5° table gives ~1.1 m/s²; exaggerated for feel.
-const GRAVITY: f32 = 2.5;
-/// Full g in the same exaggerated units, for ramp inclines.
-const G_VERTICAL: f32 = GRAVITY / 0.113;
-const FLIPPER_SPEED: f32 = 55.0; // rad/s, full stroke in ~19ms
-const PLUNGER_MAX_SPEED: f32 = 4.3;
 const BUMPER_KICK: f32 = 1.6;
 const SLING_KICK: f32 = 1.3;
 const KICK_COOLDOWN: f32 = 0.08;
@@ -35,6 +29,8 @@ pub struct Ball {
     pub height: f32,
     /// Index of the hole holding this ball, if any.
     pub held: Option<usize>,
+    /// Frozen at the launch position until the launch key fires it.
+    pub waiting: bool,
 }
 
 pub struct Flipper {
@@ -130,13 +126,15 @@ pub struct Table {
     pub bumper_flash: Vec<f32>,
     pub sling_flash: Vec<f32>,
     pub plunger_charge: f32,
+    launch_key: bool,
     buttons: [bool; 2],
 }
 
 impl Table {
     pub fn new(layout: Layout) -> Self {
         let mut world = PhysicsWorld::default();
-        world.gravity = Vector::new(0.0, -GRAVITY);
+        // Only the component along the tilted playfield acts in 2D.
+        world.gravity = Vector::new(0.0, -layout.gravity * layout.angle.sin());
         world.integration_parameters.dt = 1.0 / PHYSICS_HZ;
         // Rapier's tolerances are tuned for metre-sized objects; ours are small.
         world.integration_parameters.length_unit = 0.05;
@@ -150,13 +148,10 @@ impl Table {
             if w.closed {
                 pts.push(pts[0]);
             }
-            // Ramp rails absorb hits; playfield walls are livelier.
-            let restitution = if w.layer == Layer::Playfield { 0.45 } else { 0.1 };
             world.insert_collider(
                 ColliderBuilder::polyline(pts, None)
-                    .restitution(restitution)
-                    .restitution_combine_rule(CoefficientCombineRule::Min)
-                    .friction(0.05)
+                    .restitution(w.restitution)
+                    .friction(w.friction)
                     .collision_groups(layer_groups(w.layer)),
                 Some(ground),
             );
@@ -277,6 +272,7 @@ impl Table {
             bumper_flash: vec![0.0; n_bumpers],
             sling_flash: vec![0.0; n_slings],
             plunger_charge: 0.0,
+            launch_key: false,
             buttons: [false; 2],
         }
     }
@@ -300,52 +296,62 @@ impl Table {
 
     /// Adds a ball at `pos` on the playfield layer.
     pub fn add_ball(&mut self, pos: Vector, vel: Vector) -> RigidBodyHandle {
+        let ball = &self.layout.ball;
         let (body, collider) = self.world.insert(
             RigidBodyBuilder::dynamic()
                 .translation(pos)
                 .linvel(vel)
                 .ccd_enabled(true)
                 .can_sleep(false),
-            ColliderBuilder::ball(BALL_R)
-                .density(7850.0)
-                .restitution(0.3)
-                .friction(0.1)
+            // Multiply: a surface's restitution is scaled by the ball's, and the
+            // surface's friction is used as is.
+            ColliderBuilder::ball(ball.radius)
+                .mass(ball.mass)
+                .restitution(ball.restitution)
+                .restitution_combine_rule(CoefficientCombineRule::Multiply)
+                .friction(1.0)
+                .friction_combine_rule(CoefficientCombineRule::Multiply)
                 .active_events(ActiveEvents::COLLISION_EVENTS),
         );
-        let mut ball = Ball { body, collider, layer: Layer::Playfield, height: 0.0, held: None };
+        let mut ball = Ball { body, collider, layer: Layer::Playfield, height: 0.0, held: None, waiting: false };
         set_layer(&mut self.world, &mut ball, Layer::Playfield);
         self.balls.push(ball);
         body
     }
 
-    /// Puts a new ball in the plunger lane.
+    /// Puts a new ball at the launch position, frozen until it's launched.
     pub fn serve_ball(&mut self) -> RigidBodyHandle {
-        self.add_ball(self.layout.plunger_rest, Vector::ZERO)
+        let body = self.add_ball(self.layout.launch.pos, Vector::ZERO);
+        self.world.bodies[body].set_enabled(false);
+        self.balls.last_mut().unwrap().waiting = true;
+        body
     }
 
-    pub fn ball_in_lane(&self) -> bool {
-        self.balls.iter().any(|b| {
-            let p = self.ball_pos(b);
-            p.x > crate::layout::LANE_X && p.y < 0.1
-        })
+    pub fn ball_waiting(&self) -> bool {
+        self.balls.iter().any(|b| b.waiting)
     }
 
-    /// Hold to charge, release to fire every ball resting in the lane.
+    /// Launch key. A charged launch (plunger) fires on release, harder the
+    /// longer it was held; otherwise it fires on press at the launch velocity.
     pub fn plunger(&mut self, held: bool, dt: f32) {
-        if held {
-            self.plunger_charge = (self.plunger_charge + dt * 1.2).min(1.0);
-            return;
-        }
-        if self.plunger_charge > 0.0 {
-            let speed = PLUNGER_MAX_SPEED * (0.3 + 0.7 * self.plunger_charge);
-            for b in &self.balls {
-                let body = &mut self.world.bodies[b.body];
-                let p = body.translation();
-                if p.x > crate::layout::LANE_X && p.y < 0.1 {
-                    body.set_linvel(Vector::new(0.0, speed), true);
-                }
+        let pressed = held && !self.launch_key;
+        let released = !held && self.launch_key;
+        self.launch_key = held;
+        let launch = &self.layout.launch;
+        let fire = if launch.charged {
+            if held {
+                self.plunger_charge = (self.plunger_charge + dt * 1.2).min(1.0);
             }
-            self.plunger_charge = 0.0;
+            released.then(|| launch.vel * (0.3 + 0.7 * std::mem::take(&mut self.plunger_charge)))
+        } else {
+            pressed.then_some(launch.vel)
+        };
+        let Some(vel) = fire else { return };
+        for b in self.balls.iter_mut().filter(|b| b.waiting) {
+            b.waiting = false;
+            let body = &mut self.world.bodies[b.body];
+            body.set_enabled(true);
+            body.set_linvel(vel, true);
         }
     }
 
@@ -387,12 +393,11 @@ impl Table {
         for f in &mut self.flippers {
             let pressed = self.buttons[(f.def.button == Button::Right) as usize];
             let target = if pressed { f.def.up } else { f.def.rest };
-            let max = FLIPPER_SPEED * dt;
+            let max = f.def.speed * dt;
             f.angle += (target - f.angle).clamp(-max, max);
             // Kinematic body: Rapier derives the velocity from the pose change,
             // which is what gives the ball its "hit".
-            self.world.bodies[f.body]
-                .set_next_kinematic_position(Pose::new(f.def.pivot, f.angle * f.def.side));
+            self.world.bodies[f.body].set_next_kinematic_position(Pose::new(f.def.pivot, f.angle));
         }
 
         // Ramp inclines: gravity along the ramp, on top of the table tilt.
@@ -404,7 +409,7 @@ impl Table {
                     let body = &mut self.world.bodies[b.body];
                     let ramp = self.layout.ramps.iter().find(|r| r.layer == layer).unwrap();
                     let (h, tangent, slope) = ramp.sample(body.translation());
-                    let v = body.linvel() - tangent * (G_VERTICAL * slope * dt);
+                    let v = body.linvel() - tangent * (self.layout.gravity * slope * dt);
                     body.set_linvel(v, true);
                     h
                 }
@@ -439,7 +444,7 @@ impl Table {
         while i < self.balls.len() {
             let b = &self.balls[i];
             let body = &self.world.bodies[b.body];
-            if b.held.is_none() && body.translation().y < DRAIN_Y {
+            if b.held.is_none() && !b.waiting && body.translation().y < DRAIN_Y {
                 events.push(Event { sw: Sw::Drain, ball: b.body, vel: body.linvel() });
                 let b = self.balls.swap_remove(i);
                 self.world.remove_body_with_colliders(b.body, true);
@@ -522,28 +527,20 @@ fn set_layer(world: &mut PhysicsWorld, ball: &mut Ball, layer: Layer) {
 }
 
 fn make_flipper(world: &mut PhysicsWorld, def: &FlipperDef) -> Flipper {
-    // Tapered outline: hull of a large circle at the pivot and a small one at the tip.
-    let mut pts = Vec::new();
-    for i in 0..16 {
-        let t = i as f32 / 16.0 * std::f32::consts::TAU;
-        let (s, c) = t.sin_cos();
-        pts.push(Vector::new(c * def.r_base, s * def.r_base));
-        pts.push(Vector::new(def.side * def.len + c * def.r_tip, s * def.r_tip));
-    }
-    let collider = ColliderBuilder::convex_hull(&pts)
-        .expect("flipper hull")
-        .restitution(0.25)
-        .friction(0.6)
+    let collider = ColliderBuilder::convex_hull(&def.outline)
+        .expect("flipper outline has no area")
+        .restitution(def.restitution)
+        .friction(def.friction)
         .collision_groups(layer_groups(def.layer));
     let outline = match collider.shape.as_convex_polygon() {
         Some(poly) => poly.points().to_vec(),
-        None => pts,
+        None => def.outline.clone(),
     };
     let (body, _) = world.insert(
         RigidBodyBuilder::kinematic_position_based()
-            .pose(Pose::new(def.pivot, def.rest * def.side))
+            .pose(Pose::new(def.pivot, def.rest))
             .ccd_enabled(true),
         collider,
     );
-    Flipper { def: *def, body, outline, angle: def.rest }
+    Flipper { def: def.clone(), body, outline, angle: def.rest }
 }

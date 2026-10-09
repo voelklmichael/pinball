@@ -69,7 +69,7 @@ impl Game {
         table.serve_ball();
     }
 
-    fn say(&mut self, text: impl Into<String>) {
+    pub fn say(&mut self, text: impl Into<String>) {
         self.message = Some((text.into(), 2.0));
     }
 
@@ -164,8 +164,8 @@ impl Game {
     }
 
     pub fn tick(&mut self, table: &mut Table, dt: f32) {
-        // Ball save only counts down once the ball has left the plunger lane.
-        if !table.ball_in_lane() {
+        // Ball save only counts down once the ball has been launched.
+        if !table.ball_waiting() {
             self.ball_save = (self.ball_save - dt).max(0.0);
         }
         if let Some(t) = &mut self.scoop_timer {

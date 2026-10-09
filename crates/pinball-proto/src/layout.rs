@@ -61,6 +61,10 @@ pub struct Wall {
     pub layer: Layer,
     pub pts: Vec<Vector>,
     pub closed: bool,
+    /// Bounce: the effective value is this times the ball's restitution.
+    pub restitution: f32,
+    /// Friction along the wall.
+    pub friction: f32,
 }
 
 pub struct Ramp {
@@ -164,19 +168,51 @@ pub enum Button {
     Right,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct FlipperDef {
     pub pivot: Vector,
-    pub len: f32,
-    pub r_base: f32,
-    pub r_tip: f32,
-    /// +1 points right (left flipper), -1 points left (right flipper).
-    pub side: f32,
-    /// Angles above horizontal, mirrored by `side`.
+    /// Outline in local coordinates: pivot at the origin, pointing along +x.
+    /// The flipper body is the convex hull of these points.
+    pub outline: Vec<Vector>,
+    /// World angles (radians, counter-clockwise from +x) at rest and fully up.
     pub rest: f32,
     pub up: f32,
+    /// Angular speed in rad/s.
+    pub speed: f32,
+    pub restitution: f32,
+    pub friction: f32,
     pub layer: Layer,
     pub button: Button,
+}
+
+/// Classic tapered flipper: a circle at the pivot and a smaller one at the tip,
+/// pointing along +x.
+pub fn tapered_outline(len: f32, r_base: f32, r_tip: f32) -> Vec<Vector> {
+    let mut pts = Vec::new();
+    for i in 0..16 {
+        let t = i as f32 / 16.0 * std::f32::consts::TAU;
+        let (s, c) = t.sin_cos();
+        pts.push(Vector::new(c * r_base, s * r_base));
+        pts.push(Vector::new(len + c * r_tip, s * r_tip));
+    }
+    pts
+}
+
+pub struct BallDef {
+    pub radius: f32,
+    /// kg; only matters when balls hit each other.
+    pub mass: f32,
+    /// Multiplies every surface's restitution: lower is a "softer" ball.
+    pub restitution: f32,
+}
+
+/// How a new ball enters play.
+pub struct Launch {
+    pub pos: Vector,
+    pub vel: Vector,
+    /// Plunger: holding the key longer shoots harder (30% to 100% of `vel`).
+    /// Otherwise the key fires at exactly `vel`.
+    pub charged: bool,
 }
 
 /// Scoop: captures the ball, the rules decide when to eject it.
@@ -188,6 +224,15 @@ pub struct Hole {
 }
 
 pub struct Layout {
+    pub name: String,
+    /// Width and height of the table; the playfield spans (0,0) to `size`.
+    pub size: Vector,
+    /// Table tilt in radians.
+    pub angle: f32,
+    /// Full gravity; the ball feels `gravity * sin(angle)` along the playfield.
+    pub gravity: f32,
+    pub ball: BallDef,
+    pub launch: Launch,
     pub walls: Vec<Wall>,
     pub ramps: Vec<Ramp>,
     pub sensors: Vec<Sensor>,
@@ -198,8 +243,7 @@ pub struct Layout {
     pub gates: Vec<Gate>,
     pub flippers: Vec<FlipperDef>,
     pub holes: Vec<Hole>,
-    pub plunger_rest: Vector,
-    /// Outline of the upper level, for drawing.
+    /// Outline of the upper level, for drawing (empty if there is none).
     pub upper_outline: Vec<Vector>,
 }
 
@@ -269,7 +313,11 @@ pub fn bavaria() -> Layout {
     use Layer::*;
     let pf = Playfield;
     let mut walls = Vec::new();
-    let mut wall = |layer, pts: Vec<Vector>, closed| walls.push(Wall { layer, pts, closed });
+    let mut wall = |layer, pts: Vec<Vector>, closed| {
+        // Ramp rails absorb hits; playfield walls are livelier.
+        let restitution = if layer == Playfield { 0.35 } else { 0.1 };
+        walls.push(Wall { layer, pts, closed, restitution, friction: 0.075 })
+    };
 
     // Cabinet: left side, top arch, right side down the plunger lane.
     let mut outer = vec![v(0.0, 0.0), v(0.0, 0.81)];
@@ -448,19 +496,34 @@ pub fn bavaria() -> Layout {
     let rest: f32 = -0.52;
     // Tip edges ~35mm apart, so a dead ball drains between the flippers.
     let pivot_dx = 0.0235 + flipper_len * rest.cos();
-    let main_flipper = |side: f32, button| FlipperDef {
-        pivot: v(LANE_X / 2.0 - side * pivot_dx, 0.15),
-        len: flipper_len,
-        r_base: 0.011,
-        r_tip: 0.006,
-        side,
+    let flipper = |pivot, rest: f32, up: f32, outline, layer, button| FlipperDef {
+        pivot,
+        outline,
         rest,
-        up: 0.52,
-        layer: pf,
+        up,
+        speed: 55.0, // full stroke in ~19ms
+        restitution: 0.25,
+        friction: 0.35,
+        layer,
         button,
     };
+    let main_outline = tapered_outline(flipper_len, 0.011, 0.006);
+    let right_x = LANE_X / 2.0 + pivot_dx;
+    let left_x = LANE_X / 2.0 - pivot_dx;
+    let pi = std::f32::consts::PI;
 
     Layout {
+        name: "Bavaria".into(),
+        size: v(TABLE_W, TABLE_H),
+        // 2.25x real gravity on a real 6.5° tilt: plays like a real table sped up 1.5x.
+        angle: 6.5f32.to_radians(),
+        gravity: 22.1,
+        ball: BallDef { radius: BALL_R, mass: 0.08, restitution: 0.9 },
+        launch: Launch {
+            pos: v((LANE_X + TABLE_W) / 2.0, 0.03 + BALL_R + 0.002),
+            vel: v(0.0, 4.3),
+            charged: true,
+        },
         walls,
         ramps,
         sensors,
@@ -477,22 +540,12 @@ pub fn bavaria() -> Layout {
             Gate { a: v(LANE_X, 0.53), b: v(mx(0.06), 0.48), pass: Vector::Y, layer: pf },
         ],
         flippers: vec![
-            main_flipper(1.0, Button::Left),
-            main_flipper(-1.0, Button::Right),
-            FlipperDef {
-                pivot: v(0.31, 0.865),
-                len: 0.05,
-                r_base: 0.009,
-                r_tip: 0.005,
-                side: 1.0,
-                rest: -0.5,
-                up: 0.5,
-                layer: Upper,
-                button: Button::Left,
-            },
+            flipper(v(left_x, 0.15), rest, -rest, main_outline.clone(), pf, Button::Left),
+            // Mirrored: points down-left at rest (180° + 30°).
+            flipper(v(right_x, 0.15), pi - rest, pi + rest, main_outline, pf, Button::Right),
+            flipper(v(0.31, 0.865), -0.5, 0.5, tapered_outline(0.05, 0.009, 0.005), Upper, Button::Left),
         ],
         holes: vec![Hole { center: v(0.169, 0.672), radius: 0.012, eject: v(0.05, -0.6), sw: Sw::Scoop }],
-        plunger_rest: v((LANE_X + TABLE_W) / 2.0, 0.03 + BALL_R + 0.002),
         upper_outline,
     }
 }

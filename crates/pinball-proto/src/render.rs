@@ -5,7 +5,7 @@
 use macroquad::prelude::*;
 
 use crate::game::Game;
-use crate::layout::{BALL_R, LANE_X, Layer, Shape, Sw, TABLE_H, TABLE_W};
+use crate::layout::{Layer, Shape, Sw};
 use crate::physics::Table;
 
 type PVec = rapier2d::math::Vector;
@@ -18,12 +18,11 @@ struct View {
 }
 
 impl View {
-    fn fit() -> Self {
+    fn fit(size: PVec) -> Self {
         let (margin, hud) = (16.0, 40.0);
-        let scale =
-            ((screen_width() - 2.0 * margin) / TABLE_W).min((screen_height() - 2.0 * margin - hud) / TABLE_H);
-        let ox = (screen_width() - TABLE_W * scale) / 2.0;
-        let oy = margin + hud + TABLE_H * scale;
+        let scale = ((screen_width() - 2.0 * margin) / size.x).min((screen_height() - 2.0 * margin - hud) / size.y);
+        let ox = (screen_width() - size.x * scale) / 2.0;
+        let oy = margin + hud + size.y * scale;
         Self { scale, ox, oy }
     }
 
@@ -57,13 +56,13 @@ fn polyline(view: &View, pts: &[PVec], closed: bool, width: f32, color: Color) {
 
 /// Fills a convex polygon as a fan.
 fn fill_convex(pts: &[Vec2], color: Color) {
-    for i in 1..pts.len() - 1 {
+    for i in 1..pts.len().saturating_sub(1) {
         draw_triangle(pts[0], pts[i], pts[i + 1], color);
     }
 }
 
-fn draw_ball(view: &View, pos: PVec, height: f32) {
-    let r = BALL_R * view.scale * (1.0 + height * 4.0);
+fn draw_ball(view: &View, pos: PVec, radius: f32, height: f32) {
+    let r = radius * view.scale * (1.0 + height * 4.0);
     let c = view.p(pos);
     if height > 0.0 {
         let off = height * view.scale * 0.4;
@@ -75,11 +74,12 @@ fn draw_ball(view: &View, pos: PVec, height: f32) {
 
 pub fn draw(table: &Table, game: &Game) {
     clear_background(Color::from_rgba(14, 18, 32, 255));
-    let view = View::fit();
     let layout = &table.layout;
+    let size = layout.size;
+    let view = View::fit(size);
 
-    let top_left = view.p(PVec::new(0.0, TABLE_H));
-    draw_rectangle(top_left.x, top_left.y, TABLE_W * view.scale, TABLE_H * view.scale, Color::from_rgba(24, 40, 64, 255));
+    let top_left = view.p(PVec::new(0.0, size.y));
+    draw_rectangle(top_left.x, top_left.y, size.x * view.scale, size.y * view.scale, Color::from_rgba(24, 40, 64, 255));
 
     // --- Playfield layer ---
     for w in layout.walls.iter().filter(|w| w.layer == Layer::Playfield) {
@@ -120,9 +120,13 @@ pub fn draw(table: &Table, game: &Game) {
             draw_text(["B", "I", "E", "R"][k as usize], p.x - 5.0, p.y - 12.0, 18.0, WHITE);
         }
     }
-    // Kickback light.
-    let kb = view.p(PVec::new(0.02, 0.16));
-    draw_circle(kb.x, kb.y, 0.006 * view.scale, if game.kickback_lit { GREEN } else { DARKGRAY });
+    // Kickback light, next to the kickback switch.
+    for sen in layout.sensors.iter().filter(|s| s.sw == Some(Sw::Kickback)) {
+        if let Shape::Rect { min, max } = sen.shape {
+            let kb = view.p(PVec::new((min.x + max.x) / 2.0, max.y + 0.03));
+            draw_circle(kb.x, kb.y, 0.006 * view.scale, if game.kickback_lit { GREEN } else { DARKGRAY });
+        }
+    }
 
     let draw_flippers = |layer: Layer| {
         for f in table.flippers.iter().filter(|f| f.def.layer == layer) {
@@ -133,16 +137,17 @@ pub fn draw(table: &Table, game: &Game) {
     };
     draw_flippers(Layer::Playfield);
 
+    // Plunger charge, as a bar under the launch position.
     if table.plunger_charge > 0.0 {
-        let base = view.p(PVec::new(LANE_X + 0.006, 0.025));
-        let w = (TABLE_W - LANE_X - 0.012) * view.scale;
+        let r = layout.ball.radius;
+        let base = view.p(layout.launch.pos - PVec::new(r, r));
         let h = 0.15 * table.plunger_charge * view.scale;
-        draw_rectangle(base.x, base.y, w, h, Color::from_rgba(255, 120, 0, 200));
+        draw_rectangle(base.x, base.y, 2.0 * r * view.scale, h, Color::from_rgba(255, 120, 0, 200));
     }
 
     let balls_on = |layer: Layer| {
         for b in table.balls.iter().filter(|b| b.layer == layer && b.held.is_none()) {
-            draw_ball(&view, table.ball_pos(b), b.height);
+            draw_ball(&view, table.ball_pos(b), layout.ball.radius, b.height);
         }
     };
     balls_on(Layer::Playfield);
@@ -182,6 +187,8 @@ pub fn draw(table: &Table, game: &Game) {
         if game.ball_save > 0.0 { "   SAVE" } else { "" }
     );
     draw_text(&hud, 16.0, 34.0, 30.0, WHITE);
+    let name_size = measure_text(&layout.name, None, 20, 1.0);
+    draw_text(&layout.name, screen_width() - name_size.width - 16.0, 52.0, 20.0, GRAY);
     let msg = if game.game_over {
         Some("GAME OVER - press N")
     } else {

@@ -39,9 +39,13 @@ fn shoot(from: (f32, f32), at: (f32, f32), speed: f32, secs: f32) -> Run {
 }
 
 fn write_svg(name: &str, traces: &[(Vec<Vector>, &str)]) {
+    write_svg_for(&layout::bavaria(), name, traces);
+}
+
+fn write_svg_for(layout: &layout::Layout, name: &str, traces: &[(Vec<Vector>, &str)]) {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/svg");
     std::fs::create_dir_all(dir).unwrap();
-    std::fs::write(format!("{dir}/{name}.svg"), crate::svg::render(&layout::bavaria(), traces)).unwrap();
+    std::fs::write(format!("{dir}/{name}.svg"), crate::svg::render(layout, traces)).unwrap();
 }
 
 const COLORS: [&str; 8] = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#a65628", "#f781bf", "#17becf"];
@@ -94,11 +98,12 @@ fn full_plunge_reaches_top_lanes() {
 }
 
 #[test]
-fn ball_rests_in_plunger_lane() {
+fn served_ball_waits_for_launch() {
     let mut table = Table::new(layout::bavaria());
     table.serve_ball();
     run(&mut table, 1.0);
-    assert!(table.ball_in_lane());
+    assert!(table.ball_waiting());
+    assert_eq!(table.ball_pos(&table.balls[0]), table.layout.launch.pos);
 }
 
 #[test]
@@ -131,11 +136,11 @@ fn ball_drains_between_flippers() {
 fn measure_flipper_speed() {
     for d in [0.015, 0.025, 0.035, 0.045, 0.055, 0.065] {
         let mut table = Table::new(layout::bavaria());
-        let def = table.flippers[0].def;
+        let def = table.flippers[0].def.clone();
         // Hold the flipper up and let the ball settle against it, like a cradle.
         let rest_dir = Vector::new(def.rest.cos(), def.rest.sin());
         let normal = Vector::new(-rest_dir.y, rest_dir.x);
-        let p = def.pivot + rest_dir * d + normal * (layout::BALL_R + def.r_base + 0.001);
+        let p = def.pivot + rest_dir * d + normal * (layout::BALL_R + 0.011 + 0.001);
         table.add_ball(p, Vector::ZERO);
         table.step();
         table.set_buttons(true, false);
@@ -151,4 +156,66 @@ fn measure_flipper_speed() {
         }
         println!("d={d:.3}  speed={:.2}  angle={:.0}°", best.length(), best.y.atan2(best.x).to_degrees());
     }
+}
+
+const SIMPLE: &str = include_str!("../../../tables/simple.json");
+
+#[test]
+fn simple_table_loads_and_plays() {
+    let layout = crate::tablefile::parse(SIMPLE).unwrap();
+    assert_eq!(layout.flippers.len(), 2);
+    let mut table = Table::new(layout);
+    table.serve_ball();
+    run(&mut table, 0.2);
+    assert!(table.ball_waiting());
+    table.plunger(true, 0.0);
+    table.plunger(false, 0.0);
+    let r = run(&mut table, 3.0);
+    let max_y = r.trace.iter().map(|p| p.y).fold(0.0, f32::max);
+    write_svg_for(&table.layout, "simple", &[(r.trace, COLORS[0])]);
+    assert!(max_y > 0.95, "inbound shot did not go round the arch: max y {max_y}");
+}
+
+#[test]
+fn json_flippers_hit_the_ball() {
+    for (i, button) in [(0, (true, false)), (1, (false, true))] {
+        let mut table = Table::new(crate::tablefile::parse(SIMPLE).unwrap());
+        let def = table.flippers[i].def.clone();
+        // Middle of the flipper, just above it.
+        let mid = def.pivot + Vector::new(def.rest.cos(), def.rest.sin()) * 0.04 + Vector::new(0.0, 0.03);
+        let ball = table.add_ball(mid, Vector::ZERO);
+        run(&mut table, 0.3);
+        table.set_buttons(button.0, button.1);
+        let mut max_vy: f32 = 0.0;
+        for _ in 0..(0.1 * PHYSICS_HZ) as usize {
+            table.step();
+            let b = table.balls.iter().find(|b| b.body == ball).unwrap();
+            max_vy = max_vy.max(table.ball_vel(b).y);
+        }
+        assert!(max_vy > 1.5, "flipper {i} hit too weak: vy {max_vy}");
+    }
+}
+
+#[test]
+fn table_file_errors_name_the_problem() {
+    let err = |json: &str| crate::tablefile::parse(json).err().expect("should fail");
+    let base = |elements: &str| {
+        format!(
+            r#"{{"size": [0.5, 1.0], "angle_deg": 6.5, "ball": {{"radius": 0.0135}},
+               "inbound": {{"position": [0.4, 0.3], "velocity": [0, 3]}}, "elements": [{elements}]}}"#
+        )
+    };
+    let e = err(&base(r#"{"type": "line", "from": [0, 0], "too": [1, 1]}"#));
+    assert!(e.contains("unknown field `too`"), "{e}");
+    let e = err(&base(r#"{"type": "line", "from": [0, 0], "to": [0, 1]}, {"type": "bezier", "points": [[0, 0], [1, 1]]}"#));
+    assert!(e.contains("elements[1] (bezier)") && e.contains("3n+1"), "{e}");
+    let e = err(&base(r#"{"type": "spline", "points": []}"#));
+    assert!(e.contains("unknown variant `spline`"), "{e}");
+    let e = err(&base(
+        r#"{"type": "flipper", "pivot": [0.2, 0.2], "rest_deg": -30, "up_deg": 30, "key": "left",
+            "shape": [{"type": "line", "from": [0, 0], "to": [0.07, 0], "restitution": 0.5}]}"#,
+    ));
+    assert!(e.contains("elements[0] (flipper): shape[0] (line)"), "{e}");
+    let e = err(&base(r#"{"type": "arc", "center": [0, 0], "radius": [0.1, 0], "start_deg": 0, "end_deg": 90}"#));
+    assert!(e.contains("radius must be > 0"), "{e}");
 }
