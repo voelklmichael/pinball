@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["engine", "scenario", "proto"]
+members = ["engine", "rules", "scenario", "proto"]
 
 # Physics is unusably slow in debug builds without this.
 [profile.dev.package."*"]

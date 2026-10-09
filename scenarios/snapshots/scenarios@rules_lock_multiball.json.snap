@@ -1,0 +1,29 @@
+---
+source: scenario/tests/scenarios.rs
+description: "Demo rules: the first ball in the lock is locked (and a new ball served); the second starts multiball, releasing both one after the other."
+input_file: scenarios/rules_lock_multiball.json
+---
+  0.000  serve ball#1 at (0.260, 0.500)
+  0.000  serve ball#2 at (0.420, 0.750)
+  0.000  serve ball#3 at (0.420, 0.950)
+  0.000  message BALL 1
+  0.333  capture ball#2 lock
+  0.333  message BALL LOCKED
+  0.333  serve ball#4 at (0.260, 0.500)
+  0.538  capture ball#3 lock
+  0.538  message MULTIBALL
+  0.538  sound multiball
+  0.538  lamp scoop blink
+  0.538  eject ball#2 lock
+  0.942  touch ball#2 box
+  0.950  leave ball#2 box
+  1.038  eject ball#3 lock
+  1.408  touch ball#2 box
+  1.427  touch ball#2 ball#3
+  1.440  leave ball#2 box
+  1.710  touch ball#2 box
+    end  ball#1 at (0.260, 0.500) v=(0.00, 0.00) on playfield
+    end  ball#2 at (0.420, 0.013) v=(0.00, 0.00) on playfield
+    end  ball#3 at (0.420, 0.040) v=(0.00, -0.00) on playfield
+    end  ball#4 at (0.260, 0.500) v=(0.00, 0.00) on playfield
+    end  score 0

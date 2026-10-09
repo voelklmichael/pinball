@@ -1,0 +1,16 @@
+{
+  "description": "Demo rules: after a strike, a ball in the scoop scores 25,000 and turns the scoop lamp off.",
+  "table": "../tables/bench_targets.json",
+  "rules": "demo",
+  "duration": 1.5,
+  "balls": [
+    { "position": [0.075, 0.30], "velocity": [0.0, 2.5] },
+    { "position": [0.125, 0.30], "velocity": [0.0, 2.5] },
+    { "position": [0.175, 0.30], "velocity": [0.0, 2.5] },
+    { "position": [0.30, 0.75] }
+  ],
+  "expect": [
+    {"sequence": ["message STRIKE", "lamp scoop on", "capture scoop", "message SCOOP 25000", "lamp scoop off"]},
+    {"score": {"min": 26500, "max": 26500}}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "description": "Demo rules: knocking down all three Kegel drop targets is a strike: it lights the scoop and the targets reset a second later.",
+  "table": "../tables/bench_targets.json",
+  "rules": "demo",
+  "duration": 1.5,
+  "balls": [
+    { "position": [0.075, 0.30], "velocity": [0.0, 2.5] },
+    { "position": [0.125, 0.30], "velocity": [0.0, 2.5] },
+    { "position": [0.175, 0.30], "velocity": [0.0, 2.5] }
+  ],
+  "expect": [
+    {"event": "message STRIKE", "count": 1},
+    {"event": "lamp scoop on"},
+    {"sequence": ["drop kegel_1", "message STRIKE", "reset kegel_1"]},
+    {"event": "reset kegel_3", "between": [1.2, 1.25]},
+    {"score": {"min": 1500, "max": 1500}}
+  ]
+}

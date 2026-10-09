@@ -19,6 +19,7 @@ Unknown fields are errors, so a typo is reported instead of silently ignored.
 | Field | Required | Default | Meaning |
 |---|---|---|---|
 | `name` | no | `""` | Shown in the game |
+| `rules` | no | `"basic"` | Rules to play the table with: `"basic"` (balls and ball save only) or `"demo"`. Rules are Rust code in the `rules` crate and refer to elements by their `id` |
 | `size` | yes | | `[width, height]` |
 | `angle_deg` | yes | | Tilt of the table |
 | `gravity` | no | `9.81` | Full gravity. The ball feels `gravity × sin(angle)` along the table. A larger value makes the game faster; simple.json uses 22 (2.25× real, plays like a real table sped up 1.5×) |

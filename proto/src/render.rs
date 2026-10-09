@@ -3,8 +3,11 @@
 
 use macroquad::prelude::*;
 
+use std::collections::BTreeMap;
+
 use engine::layout::{Layer, SensorShape};
 use engine::physics::Table;
+use rules::Lamp;
 
 type PVec = engine::rapier2d::math::Vector;
 
@@ -70,8 +73,9 @@ fn draw_ball(view: &View, pos: PVec, radius: f32, height: f32) {
     draw_circle(c.x - 0.3 * r, c.y - 0.3 * r, 0.35 * r, WHITE);
 }
 
-/// Draws the table with a status line on top and an optional message in the middle.
-pub fn draw(table: &Table, status: &str, message: Option<&str>) {
+/// Draws the table with a status line on top and an optional message in the
+/// middle. Lamps named like an element make it glow.
+pub fn draw(table: &Table, status: &str, message: Option<&str>, lamps: &BTreeMap<String, Lamp>) {
     clear_background(Color::from_rgba(14, 18, 32, 255));
     let layout = &table.layout;
     let size = layout.size;
@@ -139,6 +143,30 @@ pub fn draw(table: &Table, status: &str, message: Option<&str>) {
         }
         for b in table.balls.iter().filter(|b| b.layer == layer) {
             draw_ball(&view, table.ball_pos(b), layout.ball.radius, b.height);
+        }
+    }
+
+    // Lamps: a glow on the element of the same name (blinking ones flash).
+    let flash = (get_time() * 4.0) as i64 % 2 == 0;
+    let glow = Color::from_rgba(255, 230, 80, 140);
+    for (name, &lamp) in lamps {
+        if lamp == Lamp::Off || (lamp == Lamp::Blink && !flash) {
+            continue;
+        }
+        let at = match table.find(name) {
+            Some(engine::physics::Thing::Hole(i)) => Some(layout.holes[i].center),
+            Some(engine::physics::Thing::Switch(i)) => Some(match layout.switches[i].shape {
+                SensorShape::Circle { center, .. } => center,
+                SensorShape::Rect { min, max } => (min + max) / 2.0,
+                SensorShape::Segment { a, b } => (a + b) / 2.0,
+            }),
+            Some(engine::physics::Thing::DropTarget(i)) => Some((layout.drop_targets[i].a + layout.drop_targets[i].b) / 2.0),
+            Some(engine::physics::Thing::Spinner(i)) => Some((layout.spinners[i].a + layout.spinners[i].b) / 2.0),
+            _ => None,
+        };
+        if let Some(at) = at {
+            let c = view.p(at);
+            draw_circle(c.x, c.y, 0.02 * view.scale, glow);
         }
     }
 

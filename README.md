@@ -1,7 +1,9 @@
 # Pinball
 
-A pinball engine in Rust: tables are described in JSON files, simulated with the Rapier physics engine and drawn with macroquad.
-Play the example table with `cargo run -p proto` (Z / M = flippers, Space = launch).
+A pinball engine in Rust: tables are described in JSON files, simulated with the Rapier physics engine and drawn with macroquad; the rules (scoring, modes, multiball) are Rust code on top.
+Play the demo table with `cargo run -p proto -- tables/demo.json` (Z / M = flippers, Space = launch).
+
+Crates: `engine` (table files, physics), `rules` (game rules), `scenario` (scripted tests), `proto` (the game).
 
 ## Scenarios
 

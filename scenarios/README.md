@@ -57,21 +57,25 @@ When fixing a physics bug, first add a scenario that shows it, then fix it, so i
 | `description` | yes | | What this scenario shows, in one sentence |
 | `table` | yes | | Table file, relative to the scenario file |
 | `duration` | yes | | Seconds to run |
-| `serve` | no | `true` | Serve a ball at the launcher at the start |
+| `serve` | no | `true` | Serve a ball at the launcher at the start (ignored with `rules`: the game serves) |
+| `rules` | no | | Play with these rules, e.g. `"demo"` or `"basic"`: the trace then also has the rules' output (`score +500 = 1500`, `message STRIKE`, `lamp scoop on`, `sound multiball`) and the final score |
 | `balls` | no | `[]` | Balls placed directly at the start: `{ "position": [x, y], "velocity": [vx, vy] }` (velocity optional) |
 | `inputs` | no | `[]` | Key presses: `{ "at": 0.2, "press": "launch" }` or `{ "at": 0.4, "release": "left" }` (keys: `launch`, `left`, `right`), or actions the rules would take: `{ "at": 1.0, "reset": "kegel_1" }` raises a drop target, `{ "at": 1.0, "eject": "lock" }` lets a hole's oldest ball go |
 | `expect` | no | `[]` | Checks, see below |
 
 ### Checks
 
-Events are written like trace lines without time and ball number: `"launch"`, `"touch outer_wall"`, `"leave left_flipper"`, `"kick bumper"`, `"switch lane"`, `"cross loop.exit"` (a transition), `"drop kegel_1"`, `"reset kegel_1"`, `"capture scoop"`, `"eject scoop"`, `"spin spinner"`, `"flipper_up left_flipper"`, `"drain"`.
+Engine events are written like trace lines without time and ball number: `"launch"`, `"touch outer_wall"`, `"leave left_flipper"`, `"kick bumper"`, `"switch lane"`, `"cross loop.exit"` (a transition), `"drop kegel_1"`, `"reset kegel_1"`, `"capture scoop"`, `"eject scoop"`, `"spin spinner"`, `"flipper_up left_flipper"`, `"drain"`.
 
 | Check | Passes if |
 |---|---|
-| `{ "event": "touch center_post", "between": [0.2, 0.3] }` | the event happens at least once (within the time window, if given) |
+| `{ "event": "touch center_post", "between": [0.2, 0.3] }` | the event happens at least once (within the time window, if given); with `"count": n` exactly n times |
 | `{ "never": "drain" }` | the event never happens |
 | `{ "sequence": ["launch", "touch outer_wall", "drain"] }` | the events happen in this order; others may come in between |
 | `{ "enters": { "min": [x0, y0], "max": [x1, y1] }, "between": [0.2, 0.8] }` | a ball's centre gets into the rectangle (within the time window, if given) |
 | `{ "at_end": { "near": [x, y], "within": 0.01, "max_speed": 0.01, "layer": "playfield" } }` | at the end, a ball is within `within` metres of `near`, slower than `max_speed` m/s (optional) and on `layer` (optional) |
+| `{ "score": { "min": 1500, "max": 1500 } }` | the final score is in the range (`min` and `max` optional; needs `rules`) |
+
+With rules, the outputs are checked like events: `"message STRIKE"`, `"lamp scoop on"`, `"sound multiball"`, and `"score"` for any points scored.
 
 Prefer checks that describe the behaviour ("the ball goes over the top of the arch") over exact numbers; the snapshot already records the exact numbers.

@@ -154,8 +154,11 @@ pub struct Table {
     pub layout: Layout,
     pub balls: Vec<Ball>,
     pub flippers: Vec<Flipper>,
-    /// What each non-ball collider is.
+    /// What each non-ball collider is, and the other way round.
     things: HashMap<ColliderHandle, Thing>,
+    colliders: BTreeMap<Thing, ColliderHandle>,
+    /// Elements the rules switched off.
+    pub disabled: BTreeSet<Thing>,
     steps: u64,
     next_ball: u32,
     /// Events raised between steps (serve, launch, flipper), returned by the next step.
@@ -277,6 +280,7 @@ impl Table {
         );
         let drops_down = vec![false; layout.drop_targets.len()];
         let held = layout.holes.iter().map(|_| VecDeque::new()).collect();
+        let colliders = things.iter().map(|(&h, &t)| (t, h)).collect();
         Self {
             world,
             hooks,
@@ -285,6 +289,8 @@ impl Table {
             balls: Vec::new(),
             flippers,
             things,
+            colliders,
+            disabled: BTreeSet::new(),
             steps: 0,
             next_ball: 1,
             pending: Vec::new(),
@@ -431,6 +437,34 @@ impl Table {
     /// How many balls a hole holds.
     pub fn held_in(&self, hole: usize) -> usize {
         self.held[hole].len()
+    }
+
+    /// Balls in play or waiting to be launched, i.e. not held in a hole.
+    pub fn balls_in_play(&self) -> usize {
+        self.balls.iter().filter(|b| b.held.is_none()).count()
+    }
+
+    /// Sets a ball's velocity (kickbacks, magnets); false if it's not on the table.
+    pub fn set_ball_vel(&mut self, number: u32, vel: Vector) -> bool {
+        let Some(b) = self.balls.iter().find(|b| b.number == number && b.in_play()) else { return false };
+        self.world.bodies[b.body].set_linvel(vel, true);
+        true
+    }
+
+    /// Switches an element off (it no longer touches balls) or back on: a pin
+    /// that drops, a diverter, a gate the rules open. Drop targets go down and
+    /// up with hits and `reset_drop_target` instead.
+    pub fn set_enabled(&mut self, thing: Thing, on: bool) {
+        let Some(&h) = self.colliders.get(&thing) else { return };
+        if matches!(thing, Thing::DropTarget(_)) {
+            return;
+        }
+        self.world.colliders[h].set_enabled(on);
+        if on {
+            self.disabled.remove(&thing);
+        } else {
+            self.disabled.insert(thing);
+        }
     }
 
     /// Advance one fixed physics step and return what happened since the last one.

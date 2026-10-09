@@ -1,0 +1,45 @@
+---
+source: scenario/tests/scenarios.rs
+description: "On the demo table, a launched ball passes the spinner on the way up and scores."
+input_file: scenarios/demo_launch.json
+---
+  0.000  serve ball#1 at (0.495, 0.300)
+  0.000  message BALL 1
+  0.200  launch ball#1 v=(0.00, 4.00)
+  0.281  spin ball#1 spinner x30
+  0.281  score +750 = 750
+  0.356  touch ball#1 outer_wall
+  0.373  leave ball#1 outer_wall
+  0.410  touch ball#1 outer_wall
+  0.560  leave ball#1 outer_wall
+  0.646  touch ball#1 kegel_3
+  0.646  touch ball#1 kegel_2
+  0.648  leave ball#1 kegel_3
+  0.660  touch ball#1 kegel_1
+  0.663  leave ball#1 kegel_2
+  0.667  leave ball#1 kegel_1
+  0.821  touch ball#1 outer_wall
+  0.825  leave ball#1 outer_wall
+  0.863  touch ball#1 sling_left_back
+  0.871  leave ball#1 sling_left_back
+  0.933  touch ball#1 left_flipper
+  0.942  leave ball#1 left_flipper
+  1.050  touch ball#1 right_flipper
+  1.058  leave ball#1 right_flipper
+  1.356  touch ball#1 outer_wall
+  1.371  leave ball#1 outer_wall
+  1.390  touch ball#1 outer_wall
+  1.558  leave ball#1 outer_wall
+  1.600  touch ball#1 outer_wall
+  2.010  leave ball#1 outer_wall
+  2.027  touch ball#1 right_flipper
+  2.040  leave ball#1 right_flipper
+  2.223  touch ball#1 right_flipper
+  2.377  leave ball#1 right_flipper
+  2.415  touch ball#1 left_flipper
+  2.425  leave ball#1 left_flipper
+  2.644  drain ball#1
+  2.644  message BALL SAVED
+  2.644  serve ball#2 at (0.495, 0.300)
+    end  ball#2 at (0.495, 0.300) v=(0.00, 0.00) on playfield
+    end  score 750

@@ -25,6 +25,8 @@ type P = [f32; 2];
 pub struct TableFile {
     #[serde(default)]
     pub name: String,
+    /// Name of the rules to play this table with, e.g. "demo".
+    pub rules: Option<String>,
     /// Width and height.
     pub size: P,
     /// Tilt of the table.
@@ -882,6 +884,7 @@ impl TableFile {
 
         Ok(Layout {
             name: self.name,
+            rules: self.rules,
             size,
             angle: self.angle_deg.to_radians(),
             gravity: self.gravity,

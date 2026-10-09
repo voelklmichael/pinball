@@ -1,8 +1,7 @@
-//! Pinball engine: the table model, table files, physics and rules. Has no
+//! Pinball engine: the table model, table files and physics. Has no
 //! window or drawing; the game (`proto`) and the scenario tests
 //! (`scenario`) build on it.
 
-pub mod game;
 pub mod layout;
 pub mod physics;
 pub mod svg;

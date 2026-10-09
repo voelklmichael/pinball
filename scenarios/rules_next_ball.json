@@ -1,0 +1,14 @@
+{
+  "description": "A ball that drains after its ball save ran out ends the ball: ball 2 is served.",
+  "table": "../tables/simple.json",
+  "rules": "basic",
+  "duration": 14.0,
+  "inputs": [
+    { "at": 0.2, "press": "launch" }, { "at": 0.3, "release": "launch" },
+    { "at": 11.0, "press": "launch" }
+  ],
+  "expect": [
+    {"sequence": ["launch", "drain", "message BALL SAVED", "launch", "drain", "message BALL 2", "serve"]},
+    {"never": "message GAME OVER"}
+  ]
+}

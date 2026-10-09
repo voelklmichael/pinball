@@ -223,6 +223,8 @@ pub struct Launcher {
 
 pub struct Layout {
     pub name: String,
+    /// Name of the rules this table is played with (see the `rules` crate).
+    pub rules: Option<String>,
     /// Width and height of the table; the playfield spans (0,0) to `size`.
     pub size: Vector,
     /// Table tilt in radians.

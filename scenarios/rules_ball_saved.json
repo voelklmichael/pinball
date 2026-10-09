@@ -1,0 +1,11 @@
+{
+  "description": "A ball that drains soon after its launch is saved: the same ball number is served again.",
+  "table": "../tables/simple.json",
+  "rules": "basic",
+  "duration": 3.0,
+  "inputs": [{ "at": 0.2, "press": "launch" }],
+  "expect": [
+    {"sequence": ["launch", "drain", "message BALL SAVED", "serve"]},
+    {"never": "message BALL 2"}
+  ]
+}

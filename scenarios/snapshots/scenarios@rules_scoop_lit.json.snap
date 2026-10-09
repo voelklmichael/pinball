@@ -1,0 +1,54 @@
+---
+source: scenario/tests/scenarios.rs
+description: "Demo rules: after a strike, a ball in the scoop scores 25,000 and turns the scoop lamp off."
+input_file: scenarios/rules_scoop_lit.json
+---
+  0.000  serve ball#1 at (0.260, 0.500)
+  0.000  serve ball#2 at (0.075, 0.300)
+  0.000  serve ball#3 at (0.125, 0.300)
+  0.000  serve ball#4 at (0.175, 0.300)
+  0.000  serve ball#5 at (0.300, 0.750)
+  0.000  message BALL 1
+  0.223  touch ball#2 kegel_1
+  0.223  drop ball#2 kegel_1
+  0.223  touch ball#3 kegel_2
+  0.223  drop ball#3 kegel_2
+  0.223  touch ball#4 kegel_3
+  0.223  drop ball#4 kegel_3
+  0.223  score +500 = 500
+  0.223  message STRIKE
+  0.223  lamp scoop on
+  0.223  score +500 = 1000
+  0.223  score +500 = 1500
+  0.225  leave ball#2 kegel_1
+  0.225  leave ball#3 kegel_2
+  0.225  leave ball#4 kegel_3
+  0.333  capture ball#5 scoop
+  0.333  score +25000 = 26500
+  0.333  message SCOOP 25000
+  0.333  lamp scoop off
+  0.827  touch ball#3 box
+  0.827  touch ball#2 box
+  0.827  touch ball#4 box
+  0.835  leave ball#2 box
+  0.835  leave ball#3 box
+  0.835  leave ball#4 box
+  1.223  reset kegel_1
+  1.223  reset kegel_2
+  1.223  reset kegel_3
+  1.306  touch ball#3 box
+  1.306  touch ball#2 box
+  1.306  touch ball#4 box
+  1.333  eject ball#5 scoop
+  1.327  leave ball#2 box
+  1.327  leave ball#3 box
+  1.327  leave ball#4 box
+  1.442  touch ball#3 box
+  1.442  touch ball#2 box
+  1.442  touch ball#4 box
+    end  ball#1 at (0.260, 0.500) v=(0.00, 0.00) on playfield
+    end  ball#2 at (0.075, 0.013) v=(0.00, 0.00) on playfield
+    end  ball#3 at (0.125, 0.013) v=(0.00, 0.00) on playfield
+    end  ball#4 at (0.175, 0.013) v=(0.00, 0.00) on playfield
+    end  ball#5 at (0.300, 0.402) v=(0.00, -1.38) on playfield
+    end  score 26500

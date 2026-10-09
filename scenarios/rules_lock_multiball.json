@@ -1,0 +1,12 @@
+{
+  "description": "Demo rules: the first ball in the lock is locked (and a new ball served); the second starts multiball, releasing both one after the other.",
+  "table": "../tables/bench_targets.json",
+  "rules": "demo",
+  "duration": 2.5,
+  "balls": [{ "position": [0.42, 0.75] }, { "position": [0.42, 0.95] }],
+  "expect": [
+    {"sequence": ["capture lock", "message BALL LOCKED", "serve", "capture lock", "message MULTIBALL", "eject lock", "eject lock"]},
+    {"event": "message BALL LOCKED", "count": 1},
+    {"event": "lamp scoop blink"}
+  ]
+}

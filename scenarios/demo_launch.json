@@ -1,0 +1,11 @@
+{
+  "description": "On the demo table, a launched ball passes the spinner on the way up and scores.",
+  "table": "../tables/demo.json",
+  "rules": "demo",
+  "duration": 4.0,
+  "inputs": [{ "at": 0.2, "press": "launch" }],
+  "expect": [
+    {"sequence": ["launch", "spin spinner", "score", "touch outer_wall"]},
+    {"score": {"min": 25}}
+  ]
+}

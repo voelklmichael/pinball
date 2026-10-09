@@ -5,7 +5,8 @@
 use std::path::Path;
 
 use engine::layout::Layout;
-use engine::physics::{Event, PHYSICS_HZ, Table, Thing, Timed};
+use engine::physics::{Event, PHYSICS_HZ, Table, Thing};
+use rules::{Game, rules_by_name};
 use engine::rapier2d::math::Vector;
 use serde::Deserialize;
 
@@ -20,9 +21,12 @@ pub struct Scenario {
     pub table: String,
     /// Seconds to run.
     pub duration: f32,
-    /// Serve a ball at the launcher at the start.
+    /// Serve a ball at the launcher at the start (with `rules`, the game does).
     #[serde(default = "yes")]
     pub serve: bool,
+    /// Play with these rules (e.g. "demo"): score, messages and lamps go
+    /// into the trace and can be checked.
+    pub rules: Option<String>,
     /// Balls placed directly at the start.
     #[serde(default)]
     pub balls: Vec<BallStart>,
@@ -72,7 +76,8 @@ enum Action {
     Eject(String),
 }
 
-/// One check. Exactly one of `event`, `never`, `sequence`, `enters`, `at_end`.
+/// One check. Exactly one of `event`, `never`, `sequence`, `enters`,
+/// `at_end`, `score`.
 /// Events are written like the trace without ball numbers and times, e.g.
 /// `"touch outer_wall"`, `"flipper_up left_flipper"`, `"drain"`.
 #[derive(Deserialize)]
@@ -88,8 +93,12 @@ pub struct Expect {
     pub enters: Option<Region>,
     /// A ball is still on the table at the end, as described.
     pub at_end: Option<AtEnd>,
+    /// The final score is within this range (needs `rules`).
+    pub score: Option<ScoreRange>,
     /// Time window in seconds for `event` and `enters`.
     pub between: Option<[f32; 2]>,
+    /// With `event`: exactly this many times (within `between`).
+    pub count: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -97,6 +106,19 @@ pub struct Expect {
 pub struct Region {
     pub min: P,
     pub max: P,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScoreRange {
+    #[serde(default)]
+    pub min: u64,
+    #[serde(default = "u64_max")]
+    pub max: u64,
+}
+
+fn u64_max() -> u64 {
+    u64::MAX
 }
 
 #[derive(Deserialize)]
@@ -180,14 +202,16 @@ impl Player {
 }
 
 pub struct Recording {
-    /// Every event with its trace line and its key (the line without ball
-    /// numbers, as used in `expect`).
-    pub events: Vec<(Timed, String, String)>,
+    /// Every engine event and rules output: (step, trace line, key), the key
+    /// being the line as `expect` writes it (no ball numbers, no score values).
+    pub events: Vec<(u64, String, String)>,
     /// Ball positions after every step: (step, ball number, position).
     pub positions: Vec<(u64, u32, Vector)>,
     /// Balls on the table at the end: (number, position, velocity, where:
     /// layer name, plus the hole if it's held).
     pub end: Vec<(u32, Vector, Vector, String)>,
+    /// Final score, when played with rules.
+    pub score: Option<u64>,
 }
 
 impl Recording {
@@ -204,11 +228,14 @@ impl Recording {
     /// balls left at the end. Times in ms, positions in mm.
     pub fn trace(&self) -> String {
         let mut out = String::new();
-        for (e, line, _) in &self.events {
-            out += &format!("{:7.3}  {line}\n", e.time());
+        for (step, line, _) in &self.events {
+            out += &format!("{:7.3}  {line}\n", *step as f32 / PHYSICS_HZ);
         }
         for (n, p, vel, layer) in &self.end {
             out += &format!("    end  ball#{n} at ({:.3}, {:.3}) v=({:.2}, {:.2}) on {layer}\n", p.x, p.y, vel.x, vel.y);
+        }
+        if let Some(score) = self.score {
+            out += &format!("    end  score {score}\n");
         }
         out
     }
@@ -250,10 +277,26 @@ impl Scenario {
             }
         }
         for (i, e) in scenario.expect.iter().enumerate() {
-            let kinds = [e.event.is_some(), e.never.is_some(), e.sequence.is_some(), e.enters.is_some(), e.at_end.is_some()];
+            let kinds = [
+                e.event.is_some(),
+                e.never.is_some(),
+                e.sequence.is_some(),
+                e.enters.is_some(),
+                e.at_end.is_some(),
+                e.score.is_some(),
+            ];
             if kinds.iter().filter(|&&k| k).count() != 1 {
-                return Err(ctx(format!("expect[{i}]: needs exactly one of event/never/sequence/enters/at_end")));
+                return Err(ctx(format!("expect[{i}]: needs exactly one of event/never/sequence/enters/at_end/score")));
             }
+            if e.count.is_some() && e.event.is_none() {
+                return Err(ctx(format!("expect[{i}]: count only goes with event")));
+            }
+            if e.score.is_some() && scenario.rules.is_none() {
+                return Err(ctx(format!("expect[{i}]: score needs rules")));
+            }
+        }
+        if let Some(name) = &scenario.rules {
+            rules_by_name(Some(name)).map_err(ctx)?;
         }
         let table_path = path.parent().unwrap_or(Path::new(".")).join(&scenario.table);
         let layout = engine::tablefile::load(&table_path.to_string_lossy()).map_err(ctx)?;
@@ -274,14 +317,22 @@ impl Scenario {
         Ok((scenario, layout))
     }
 
-    /// Puts the starting balls on the table.
-    pub fn start(&self, table: &mut Table) {
-        if self.serve {
-            table.serve_ball();
-        }
+    /// Puts the starting balls on the table, and starts the game if the
+    /// scenario has rules (the game serves the first ball).
+    pub fn start(&self, table: &mut Table) -> Option<Game> {
+        let game = match &self.rules {
+            Some(name) => Some(Game::new(table, rules_by_name(Some(name)).expect("checked in Scenario::load"))),
+            None => {
+                if self.serve {
+                    table.serve_ball();
+                }
+                None
+            }
+        };
         for b in &self.balls {
             table.add_ball(v(b.position), v(b.velocity));
         }
+        game
     }
 
     pub fn steps(&self) -> u64 {
@@ -294,11 +345,18 @@ impl Scenario {
         let mut player = Player::new(self);
         let mut events = Vec::new();
         let mut positions = Vec::new();
-        self.start(&mut table);
+        let mut game = self.start(&mut table);
         for _ in 0..self.steps() {
             player.apply(&mut table);
             for e in table.step() {
-                events.push((e, table.describe(&e.event), key(&table, &e.event)));
+                events.push((e.step, table.describe(&e.event), key(&table, &e.event)));
+                if let Some(game) = &mut game {
+                    game.handle(&mut table, &e.event);
+                }
+            }
+            if let Some(game) = &mut game {
+                game.tick(&mut table);
+                events.extend(game.take_outputs().into_iter().map(|(step, out)| (step, out.describe(), out.key())));
             }
             for b in &table.balls {
                 positions.push((table.steps(), b.number, table.ball_pos(b)));
@@ -315,7 +373,7 @@ impl Scenario {
                 (b.number, table.ball_pos(b), table.ball_vel(b), place)
             })
             .collect();
-        Recording { events, positions, end }
+        Recording { events, positions, end, score: game.map(|g| g.state.score) }
     }
 
     /// Everything in `expect` that didn't hold, one line each.
@@ -324,14 +382,18 @@ impl Scenario {
         for (i, e) in self.expect.iter().enumerate() {
             let window = e.between.unwrap_or([0.0, f32::MAX]);
             let in_window = |step: u64| (step_of(window[0])..=step_of(window[1])).contains(&step);
+            let during = e.between.map(|[a, b]| format!(" between {a}s and {b}s")).unwrap_or_default();
             let failure = if let Some(want) = &e.event {
-                let hit = rec.events.iter().any(|(t, _, k)| k == want && in_window(t.step));
-                (!hit).then(|| format!("\"{want}\" did not happen between {}s and {}s", window[0], window[1]))
+                let n = rec.events.iter().filter(|(step, _, k)| k == want && in_window(*step)).count();
+                match e.count {
+                    Some(count) => (n != count).then(|| format!("\"{want}\" happened {n} times, not {count}{during}")),
+                    None => (n == 0).then(|| format!("\"{want}\" did not happen{during}")),
+                }
             } else if let Some(want) = &e.never {
                 rec.events
                     .iter()
                     .find(|(_, _, k)| k == want)
-                    .map(|(t, _, _)| format!("\"{want}\" happened at {:.3}s", t.time()))
+                    .map(|(step, _, _)| format!("\"{want}\" happened at {:.3}s", *step as f32 / PHYSICS_HZ))
             } else if let Some(seq) = &e.sequence {
                 let mut wanted = seq.iter().peekable();
                 for (_, _, k) in &rec.events {
@@ -343,7 +405,7 @@ impl Scenario {
             } else if let Some(r) = &e.enters {
                 let inside = |p: Vector| p.x >= r.min[0] && p.y >= r.min[1] && p.x <= r.max[0] && p.y <= r.max[1];
                 let hit = rec.positions.iter().any(|&(step, _, p)| in_window(step) && inside(p));
-                (!hit).then(|| format!("no ball entered {:?}..{:?} between {}s and {}s", r.min, r.max, window[0], window[1]))
+                (!hit).then(|| format!("no ball entered {:?}..{:?}{during}", r.min, r.max))
             } else if let Some(end) = &e.at_end {
                 let ok = rec.end.iter().any(|(_, p, vel, layer)| {
                     p.distance(v(end.near)) <= end.within
@@ -367,6 +429,10 @@ impl Scenario {
                         balls.join(", ")
                     )
                 })
+            } else if let Some(range) = &e.score {
+                let score = rec.score.unwrap_or(0);
+                (!(range.min..=range.max).contains(&score))
+                    .then(|| format!("final score {score} is not between {} and {}", range.min, range.max))
             } else {
                 unreachable!("checked in Scenario::load")
             };

@@ -1,0 +1,8 @@
+[package]
+name = "rules"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+engine = { path = "../engine" }
+log = "0.4.34"

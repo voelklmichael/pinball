@@ -17,9 +17,11 @@ mod render;
 use std::path::PathBuf;
 
 use macroquad::prelude::*;
-use engine::game::Game;
+use std::collections::BTreeMap;
+
 use engine::physics::{PHYSICS_HZ, Table};
 use engine::tablefile;
+use rules::{Game, rules_by_name};
 use scenario::{Player, Scenario};
 
 const DEFAULT_TABLE: &str = "tables/simple.json";
@@ -63,30 +65,36 @@ fn run_steps(accumulator: &mut f32, mut step: impl FnMut()) {
     }
 }
 
-async fn play(path: String) {
-    let layout = tablefile::load(&path).unwrap_or_else(|e| fail(e));
+/// Loads a table and starts a game with the rules it names.
+fn new_game(path: &str) -> Result<(Table, Game), String> {
+    let layout = tablefile::load(path)?;
+    let rules = rules_by_name(layout.rules.as_deref()).map_err(|e| format!("{path}: {e}"))?;
     let mut table = Table::new(layout);
-    let mut game = Game::new(&mut table);
+    let game = Game::new(&mut table, rules);
+    Ok((table, game))
+}
+
+async fn play(path: String) {
+    let (mut table, mut game) = new_game(&path).unwrap_or_else(|e| fail(e));
     let mut accumulator = 0.0;
 
     loop {
         if is_key_pressed(KeyCode::Escape) {
             break;
         }
-        if is_key_pressed(KeyCode::N) && game.game_over {
-            game.start(&mut table);
+        if is_key_pressed(KeyCode::N) && game.game_over() {
+            match new_game(&path) {
+                Ok(fresh) => (table, game) = fresh,
+                Err(e) => log::error!("{e}"),
+            }
         }
         if is_key_pressed(KeyCode::F5) {
-            match tablefile::load(&path) {
-                Ok(layout) => {
+            match new_game(&path) {
+                Ok(fresh) => {
                     log::info!("reloaded {path}");
-                    table = Table::new(layout);
-                    game = Game::new(&mut table);
+                    (table, game) = fresh;
                 }
-                Err(e) => {
-                    log::error!("{e}");
-                    game.say("TABLE FILE ERROR, SEE TERMINAL");
-                }
+                Err(e) => log::error!("{e}"),
             }
         }
 
@@ -99,26 +107,27 @@ async fn play(path: String) {
             for ev in table.step() {
                 game.handle(&mut table, &ev.event);
             }
-            game.tick(&mut table, 1.0 / PHYSICS_HZ);
+            game.tick(&mut table);
+            game.take_outputs(); // already logged
         });
 
         let (status, message) = game.hud();
-        render::draw(&table, &status, message.as_deref());
+        render::draw(&table, &status, message.as_deref(), &game.lamps);
         next_frame().await;
     }
 }
 
 /// Plays a scenario's scripted inputs in the window, exactly as the tests run
-/// it, then holds the last frame. No rules: just the physics.
+/// it (with its rules, if it has any), then holds the last frame.
 async fn replay(path: PathBuf) {
     let (scenario, layout) = Scenario::load(&path).unwrap_or_else(|e| fail(e));
     log::info!("scenario {}: {}", path.display(), scenario.description);
     let start = |layout| {
         let mut table = Table::new(layout);
-        scenario.start(&mut table);
-        (table, Player::new(&scenario))
+        let game = scenario.start(&mut table);
+        (table, game, Player::new(&scenario))
     };
-    let (mut table, mut player) = start(layout);
+    let (mut table, mut game, mut player) = start(layout);
     let mut accumulator = 0.0;
 
     loop {
@@ -127,7 +136,7 @@ async fn replay(path: PathBuf) {
         }
         if is_key_pressed(KeyCode::R) {
             match Scenario::load(&path) {
-                Ok((_, layout)) => (table, player) = start(layout),
+                Ok((_, layout)) => (table, game, player) = start(layout),
                 Err(e) => log::error!("{e}"),
             }
         }
@@ -135,15 +144,31 @@ async fn replay(path: PathBuf) {
         run_steps(&mut accumulator, || {
             if table.steps() < scenario.steps() {
                 player.apply(&mut table);
-                table.step();
+                for ev in table.step() {
+                    if let Some(game) = &mut game {
+                        game.handle(&mut table, &ev.event);
+                    }
+                }
+                if let Some(game) = &mut game {
+                    game.tick(&mut table);
+                    game.take_outputs();
+                }
             }
         });
 
         let t = table.steps() as f32 / PHYSICS_HZ;
-        let status = format!("SCENARIO  {t:5.2}s / {:.2}s", scenario.duration);
         let done = table.steps() >= scenario.steps();
-        let message = done.then_some("DONE - R to replay");
-        render::draw(&table, &status, message);
+        let (status, message) = match &game {
+            Some(game) => {
+                let (status, message) = game.hud();
+                (format!("{t:5.2}s  {status}"), message)
+            }
+            None => (format!("SCENARIO  {t:5.2}s / {:.2}s", scenario.duration), None),
+        };
+        let message = if done { Some("DONE - R to replay".to_string()) } else { message };
+        let no_lamps = BTreeMap::new();
+        let lamps = game.as_ref().map_or(&no_lamps, |g| &g.lamps);
+        render::draw(&table, &status, message.as_deref(), lamps);
         if !done {
             draw_text(&scenario.description, 16.0, screen_height() - 16.0, 20.0, GRAY);
         }
