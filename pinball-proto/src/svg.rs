@@ -5,7 +5,7 @@ use std::fmt::Write;
 
 use rapier2d::math::{Pose, Vector};
 
-use crate::layout::{Layer, Layout, Shape};
+use crate::layout::{Layer, Layout};
 
 const SCALE: f32 = 1000.0; // px per metre
 
@@ -44,67 +44,21 @@ pub fn render(layout: &Layout, traces: &[(Vec<Vector>, &str)]) -> String {
         top * SCALE
     )
     .unwrap();
-    let poly = |s: &mut String, pts: &[Vector], closed, style: &str| poly(s, top, pts, closed, style);
-    let circle = |s: &mut String, c, r, style: &str| circle(s, top, c, r, style);
 
-    for (i, def) in layout.layers.iter().enumerate() {
-        let c = layer_color(Layer(i as u8));
-        poly(&mut s, &def.outline, true, &format!("fill:{c};fill-opacity:0.13;stroke:none"));
-    }
-    for r in &layout.ramps {
-        let mut outline = r.left.clone();
-        outline.extend(r.right.iter().rev());
-        let c = layer_color(r.layer);
-        writeln!(s, "<g opacity=\"0.15\">").unwrap();
-        poly(&mut s, &outline, true, &format!("fill:{c};stroke:none"));
-        writeln!(s, "</g>").unwrap();
-    }
     for w in &layout.walls {
         let width = if w.layer == Layer::PLAYFIELD { 3 } else { 2 };
-        poly(&mut s, &w.pts, w.closed, &format!("stroke:{};stroke-width:{width}", layer_color(w.layer)));
-    }
-    for sen in &layout.sensors {
-        let style = "fill:#ffbf0040;stroke:#e6a000;stroke-width:1";
-        match sen.shape {
-            Shape::Rect { min, max } => poly(
-                &mut s,
-                &[min, Vector::new(max.x, min.y), max, Vector::new(min.x, max.y)],
-                true,
-                style,
-            ),
-            Shape::Circle { c, r } => circle(&mut s, c, r, style),
-        }
-    }
-    for b in &layout.bumpers {
-        circle(&mut s, b.center, b.radius, "fill:#c83c50;stroke:#000");
-    }
-    for sl in &layout.slings {
-        poly(&mut s, &[sl.a, sl.b, sl.c], true, "stroke:#000;stroke-width:2");
-        poly(&mut s, &[sl.a, sl.b], false, "stroke:#00a0ff;stroke-width:4");
-    }
-    for d in &layout.drops {
-        let (lo, hi) = (d.center - d.half, d.center + d.half);
-        poly(&mut s, &[lo, Vector::new(hi.x, lo.y), hi, Vector::new(lo.x, hi.y)], true, "fill:#f80;stroke:#000");
-    }
-    for st in &layout.standups {
-        poly(&mut s, &[st.a, st.b], false, "stroke:#f0f;stroke-width:5");
-    }
-    for g in &layout.gates {
-        poly(&mut s, &[g.a, g.b], false, "stroke:#f80;stroke-width:3;stroke-dasharray:6 3");
-    }
-    for h in &layout.holes {
-        circle(&mut s, h.center, h.radius, "fill:#000");
+        poly(&mut s, top, &w.pts, w.closed, &format!("stroke:{};stroke-width:{width}", layer_color(w.layer)));
     }
     for f in &layout.flippers {
         let pose = Pose::new(f.pivot, f.rest);
         let hull = rapier2d::parry::transformation::convex_hull(&f.outline);
         let pts: Vec<Vector> = hull.iter().map(|&p| pose * p).collect();
-        poly(&mut s, &pts, true, "fill:#f60;stroke:none");
+        poly(&mut s, top, &pts, true, "fill:#f60;stroke:none");
     }
     for (path, color) in traces {
-        poly(&mut s, path, false, &format!("stroke:{color};stroke-width:1.5"));
+        poly(&mut s, top, path, false, &format!("stroke:{color};stroke-width:1.5"));
         if let Some(&end) = path.last() {
-            circle(&mut s, end, layout.ball.radius, &format!("fill:{color}"));
+            circle(&mut s, top, end, layout.ball.radius, &format!("fill:{color}"));
         }
     }
     writeln!(s, "</svg>").unwrap();

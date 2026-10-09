@@ -520,12 +520,7 @@ impl TableFile {
                     (_, None) => unreachable!("only flippers are not walls"),
                 }
             }
-            layers.push(LayerDef {
-                name: spec.id,
-                height: 0.0,
-                rolling_resistance: spec.rolling_resistance,
-                outline: Vec::new(),
-            });
+            layers.push(LayerDef { name: spec.id, rolling_resistance: spec.rolling_resistance });
         }
 
         Ok(Layout {
@@ -534,18 +529,10 @@ impl TableFile {
             angle: self.angle_deg.to_radians(),
             gravity: self.gravity,
             ball: BallDef { radius: self.ball.radius, mass: self.ball.mass, restitution: self.ball.restitution },
-            launcher: Launcher { position, start_velocity: v(self.launcher.start_velocity), charged: false },
+            launcher: Launcher { position, start_velocity: v(self.launcher.start_velocity) },
             layers,
             walls,
             flippers,
-            ramps: Vec::new(),
-            sensors: Vec::new(),
-            bumpers: Vec::new(),
-            slings: Vec::new(),
-            drops: Vec::new(),
-            standups: Vec::new(),
-            gates: Vec::new(),
-            holes: Vec::new(),
         })
     }
 }
