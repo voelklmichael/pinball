@@ -76,6 +76,15 @@ pub fn render(layout: &Layout, traces: &[(Vec<Vector>, &str)]) -> String {
     for t in &layout.transitions {
         poly(&mut s, top, &[t.a, t.b], false, "stroke:#17becf;stroke-width:1.5;stroke-dasharray:4 2");
     }
+    for d in &layout.drop_targets {
+        poly(&mut s, top, &[d.a, d.b], false, "stroke:#f80;stroke-width:5");
+    }
+    for h in &layout.holes {
+        circle(&mut s, top, h.center, h.radius, "fill:#000");
+    }
+    for sp in &layout.spinners {
+        poly(&mut s, top, &[sp.a, sp.b], false, "stroke:#888;stroke-width:3;stroke-dasharray:2 2");
+    }
     for f in &layout.flippers {
         let pose = Pose::new(f.pivot, f.rest);
         let hull = rapier2d::parry::transformation::convex_hull(&f.outline);

@@ -118,6 +118,20 @@ pub fn draw(table: &Table, status: &str, message: Option<&str>) {
         for t in layout.transitions.iter().filter(|t| t.layer == layer) {
             polyline(&view, &[t.a, t.b], false, 1.0, Color::from_rgba(80, 220, 230, 160));
         }
+        for (i, d) in layout.drop_targets.iter().enumerate().filter(|(_, d)| d.layer == layer) {
+            let color = if table.drops_down[i] { Color::from_rgba(90, 60, 30, 255) } else { ORANGE };
+            polyline(&view, &[d.a, d.b], false, view.px(0.006), color);
+        }
+        for (i, h) in layout.holes.iter().enumerate().filter(|(_, h)| h.layer == layer) {
+            let c = view.p(h.center);
+            draw_circle(c.x, c.y, h.radius * view.scale, BLACK);
+            if table.held_in(i) > 0 {
+                draw_circle_lines(c.x, c.y, h.radius * view.scale + 2.0, 2.0, YELLOW);
+            }
+        }
+        for s in layout.spinners.iter().filter(|s| s.layer == layer) {
+            polyline(&view, &[s.a, s.b], false, view.px(0.003), Color::from_rgba(230, 230, 240, 220));
+        }
         for f in table.flippers.iter().filter(|f| f.def.layer == layer) {
             let pose = table.flipper_pose(f);
             let pts: Vec<Vec2> = f.outline.iter().map(|&p| view.p(pose * p)).collect();

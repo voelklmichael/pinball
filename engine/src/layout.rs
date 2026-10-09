@@ -40,16 +40,19 @@ pub struct Ramp {
     pub center: Vec<Vector>,
     /// Height above the playfield at each centreline point.
     pub heights: Vec<f32>,
+    /// Sideways tilt at each centreline point, in radians; positive pushes the
+    /// ball toward the right rail (right as seen going up the ramp).
+    pub banks: Vec<f32>,
     /// The track's edges (where the rails are, if it has them).
     pub left: Vec<Vector>,
     pub right: Vec<Vector>,
 }
 
 impl Ramp {
-    /// Height, uphill unit tangent and slope (dh/ds along the tangent) at the
-    /// centreline point nearest to `p`.
-    pub fn sample(&self, p: Vector) -> (f32, Vector, f32) {
-        let mut best = (f32::MAX, 0.0, Vector::Y, 0.0);
+    /// Height, uphill unit tangent, slope (dh/ds along the tangent) and bank
+    /// at the centreline point nearest to `p`.
+    pub fn sample(&self, p: Vector) -> RampPoint {
+        let mut best = (f32::MAX, RampPoint { height: 0.0, tangent: Vector::Y, slope: 0.0, bank: 0.0 });
         for i in 0..self.center.len() - 1 {
             let (a, b) = (self.center[i], self.center[i + 1]);
             let ab = b - a;
@@ -61,11 +64,24 @@ impl Ramp {
             let d = (a + ab * t).distance_squared(p);
             if d < best.0 {
                 let (ha, hb) = (self.heights[i], self.heights[i + 1]);
-                best = (d, ha + (hb - ha) * t, ab / len, (hb - ha) / len);
+                let (ba, bb) = (self.banks[i], self.banks[i + 1]);
+                let point =
+                    RampPoint { height: ha + (hb - ha) * t, tangent: ab / len, slope: (hb - ha) / len, bank: ba + (bb - ba) * t };
+                best = (d, point);
             }
         }
-        (best.1, best.2, best.3)
+        best.1
     }
+}
+
+pub struct RampPoint {
+    pub height: f32,
+    /// Unit tangent pointing from the entrance toward the exit.
+    pub tangent: Vector,
+    /// Height change per metre along `tangent`.
+    pub slope: f32,
+    /// Sideways tilt in radians, positive toward the right rail.
+    pub bank: f32,
 }
 
 pub struct Wall {
@@ -115,6 +131,44 @@ pub struct Transition {
     pub direction: Vector,
     pub target: Layer,
     pub two_way: bool,
+}
+
+/// Stops balls until hit hard enough from the front, then drops out of the way
+/// until it's reset.
+pub struct DropTarget {
+    pub id: Option<String>,
+    pub layer: Layer,
+    pub a: Vector,
+    pub b: Vector,
+    /// Unit vector the front faces: balls must come from this side.
+    pub facing: Vector,
+    /// Minimum speed into the front (m/s) that drops it.
+    pub min_speed: f32,
+    pub restitution: f32,
+}
+
+/// Scoop, saucer or ball lock: captures balls that roll in and ejects them,
+/// either automatically after `eject_after` seconds or when told to.
+pub struct Hole {
+    pub id: Option<String>,
+    pub layer: Layer,
+    pub center: Vector,
+    pub radius: f32,
+    /// Velocity a ball leaves with.
+    pub eject: Vector,
+    pub eject_after: Option<f32>,
+    /// Faster balls roll over it (saucers); `f32::MAX` captures everything.
+    pub max_speed: f32,
+}
+
+/// A flap on a line that balls pass through; it spins depending on their speed.
+pub struct Spinner {
+    pub id: Option<String>,
+    pub layer: Layer,
+    pub a: Vector,
+    pub b: Vector,
+    /// Spins per m/s of the ball's speed across the line.
+    pub spins_per_mps: f32,
 }
 
 impl Transition {
@@ -179,6 +233,9 @@ pub struct Layout {
     pub flippers: Vec<FlipperDef>,
     pub switches: Vec<Switch>,
     pub transitions: Vec<Transition>,
+    pub drop_targets: Vec<DropTarget>,
+    pub holes: Vec<Hole>,
+    pub spinners: Vec<Spinner>,
 }
 
 impl Layout {

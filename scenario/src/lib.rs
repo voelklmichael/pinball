@@ -52,13 +52,24 @@ pub enum Key {
     Right,
 }
 
-/// `{"at": 0.2, "press": "launch"}` or `{"at": 1.0, "release": "left"}`.
+/// `{"at": 0.2, "press": "launch"}`, `{"at": 1.0, "release": "left"}`, or an
+/// action the rules would take: `{"at": 1.0, "reset": "drop_1"}` raises a drop
+/// target, `{"at": 1.0, "eject": "lock"}` lets a hole's oldest ball go.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Input {
     pub at: f32,
     pub press: Option<Key>,
     pub release: Option<Key>,
+    pub reset: Option<String>,
+    pub eject: Option<String>,
+}
+
+#[derive(Clone)]
+enum Action {
+    Key(Key, bool),
+    Reset(String),
+    Eject(String),
 }
 
 /// One check. Exactly one of `event`, `never`, `sequence`, `enters`, `at_end`.
@@ -115,8 +126,8 @@ fn step_of(seconds: f32) -> u64 {
 
 /// Plays a scenario's inputs into a table, step by step.
 pub struct Player {
-    /// (step, key, pressed), in time order.
-    inputs: Vec<(u64, Key, bool)>,
+    /// (step, action), in time order.
+    inputs: Vec<(u64, Action)>,
     next: usize,
     keys: [bool; 3],
 }
@@ -126,10 +137,15 @@ impl Player {
         let mut inputs: Vec<_> = scenario
             .inputs
             .iter()
-            .map(|i| match (i.press, i.release) {
-                (Some(k), _) => (step_of(i.at), k, true),
-                (_, Some(k)) => (step_of(i.at), k, false),
-                _ => unreachable!("checked in Scenario::load"),
+            .map(|i| {
+                let action = match (i.press, i.release, &i.reset, &i.eject) {
+                    (Some(k), ..) => Action::Key(k, true),
+                    (_, Some(k), ..) => Action::Key(k, false),
+                    (_, _, Some(id), _) => Action::Reset(id.clone()),
+                    (_, _, _, Some(id)) => Action::Eject(id.clone()),
+                    _ => unreachable!("checked in Scenario::load"),
+                };
+                (step_of(i.at), action)
             })
             .collect();
         inputs.sort_by_key(|i| i.0);
@@ -138,11 +154,23 @@ impl Player {
 
     /// Applies the inputs due at the table's current step; call before each step.
     pub fn apply(&mut self, table: &mut Table) {
-        while let Some(&(step, key, pressed)) = self.inputs.get(self.next) {
+        while let Some((step, action)) = self.inputs.get(self.next).cloned() {
             if step > table.steps() {
                 break;
             }
-            self.keys[key as usize] = pressed;
+            match action {
+                Action::Key(key, pressed) => self.keys[key as usize] = pressed,
+                Action::Reset(id) => {
+                    if let Some(Thing::DropTarget(t)) = table.find(&id) {
+                        table.reset_drop_target(t);
+                    }
+                }
+                Action::Eject(id) => {
+                    if let Some(Thing::Hole(h)) = table.find(&id) {
+                        table.eject(h);
+                    }
+                }
+            }
             self.next += 1;
         }
         let [launch, left, right] = self.keys;
@@ -157,7 +185,8 @@ pub struct Recording {
     pub events: Vec<(Timed, String, String)>,
     /// Ball positions after every step: (step, ball number, position).
     pub positions: Vec<(u64, u32, Vector)>,
-    /// Balls on the table at the end: (number, position, velocity, layer name).
+    /// Balls on the table at the end: (number, position, velocity, where:
+    /// layer name, plus the hole if it's held).
     pub end: Vec<(u32, Vector, Vector, String)>,
 }
 
@@ -195,6 +224,11 @@ fn key(table: &Table, event: &Event) -> String {
         Event::Kick { thing, .. } => format!("kick {}", table.name(thing)),
         Event::Switch { switch, .. } => format!("switch {}", table.name(Thing::Switch(switch))),
         Event::Cross { transition, .. } => format!("cross {}", table.name(Thing::Transition(transition))),
+        Event::Drop { target, .. } => format!("drop {}", table.name(Thing::DropTarget(target))),
+        Event::Reset { target } => format!("reset {}", table.name(Thing::DropTarget(target))),
+        Event::Capture { hole, .. } => format!("capture {}", table.name(Thing::Hole(hole))),
+        Event::Eject { hole, .. } => format!("eject {}", table.name(Thing::Hole(hole))),
+        Event::Spin { spinner, .. } => format!("spin {}", table.name(Thing::Spinner(spinner))),
         Event::FlipperUp { .. } | Event::FlipperDown { .. } => table.describe(event),
         Event::Drain { .. } => "drain".into(),
     }
@@ -210,8 +244,9 @@ impl Scenario {
             return Err(ctx("duration must be > 0".into()));
         }
         for (i, input) in scenario.inputs.iter().enumerate() {
-            if input.press.is_some() == input.release.is_some() {
-                return Err(ctx(format!("inputs[{i}]: needs exactly one of press/release")));
+            let given = [input.press.is_some(), input.release.is_some(), input.reset.is_some(), input.eject.is_some()];
+            if given.iter().filter(|&&g| g).count() != 1 {
+                return Err(ctx(format!("inputs[{i}]: needs exactly one of press/release/reset/eject")));
             }
         }
         for (i, e) in scenario.expect.iter().enumerate() {
@@ -222,6 +257,20 @@ impl Scenario {
         }
         let table_path = path.parent().unwrap_or(Path::new(".")).join(&scenario.table);
         let layout = engine::tablefile::load(&table_path.to_string_lossy()).map_err(ctx)?;
+        let drop_ids: Vec<_> = layout.drop_targets.iter().map(|d| d.id.as_deref()).collect();
+        let hole_ids: Vec<_> = layout.holes.iter().map(|h| h.id.as_deref()).collect();
+        for (i, input) in scenario.inputs.iter().enumerate() {
+            if let Some(id) = &input.reset
+                && !drop_ids.contains(&Some(id.as_str()))
+            {
+                return Err(ctx(format!("inputs[{i}]: no drop target \"{id}\"")));
+            }
+            if let Some(id) = &input.eject
+                && !hole_ids.contains(&Some(id.as_str()))
+            {
+                return Err(ctx(format!("inputs[{i}]: no hole \"{id}\"")));
+            }
+        }
         Ok((scenario, layout))
     }
 
@@ -258,7 +307,13 @@ impl Scenario {
         let end = table
             .balls
             .iter()
-            .map(|b| (b.number, table.ball_pos(b), table.ball_vel(b), table.layout.layer_name(b.layer).to_owned()))
+            .map(|b| {
+                let mut place = table.layout.layer_name(b.layer).to_owned();
+                if let Some(h) = b.held {
+                    place += &format!(", held in {}", table.name(Thing::Hole(h)));
+                }
+                (b.number, table.ball_pos(b), table.ball_vel(b), place)
+            })
             .collect();
         Recording { events, positions, end }
     }
@@ -293,7 +348,7 @@ impl Scenario {
                 let ok = rec.end.iter().any(|(_, p, vel, layer)| {
                     p.distance(v(end.near)) <= end.within
                         && vel.length() <= end.max_speed
-                        && end.layer.as_ref().is_none_or(|l| l == layer)
+                        && end.layer.as_ref().is_none_or(|l| layer.split(',').next() == Some(l.as_str()))
                 });
                 let balls: Vec<String> = rec
                     .end

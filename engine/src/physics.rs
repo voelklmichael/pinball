@@ -2,7 +2,7 @@
 //! Reports what happens as [`Timed`] [`Event`]s, which are also logged;
 //! scoring and rules live in `game`.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::Mutex;
 
 use rapier2d::prelude::*;
@@ -24,6 +24,9 @@ pub enum Thing {
     Ball(u32),
     Switch(usize),
     Transition(usize),
+    DropTarget(usize),
+    Hole(usize),
+    Spinner(usize),
 }
 
 /// Balls are numbered from 1 in the order they enter play.
@@ -40,6 +43,16 @@ pub enum Event {
     /// The ball crossed a transition onto another layer (onto or off a ramp,
     /// a level, ...).
     Cross { ball: u32, transition: usize, from: Layer, to: Layer },
+    /// A drop target was hit hard enough and dropped.
+    Drop { ball: u32, target: usize },
+    /// A drop target came back up.
+    Reset { target: usize },
+    /// A hole (scoop, lock) caught the ball.
+    Capture { ball: u32, hole: usize },
+    /// A hole let the ball go.
+    Eject { ball: u32, hole: usize },
+    /// The ball passed a spinner and set it spinning.
+    Spin { ball: u32, spinner: usize, spins: u32 },
     FlipperUp { flipper: usize },
     FlipperDown { flipper: usize },
     /// The ball left the bottom of the table.
@@ -68,6 +81,15 @@ pub struct Ball {
     pub height: f32,
     /// Frozen at the launch position until the launch key fires it.
     pub waiting: bool,
+    /// Held in this hole.
+    pub held: Option<usize>,
+}
+
+impl Ball {
+    /// Moving under physics: not waiting to be launched and not held in a hole.
+    fn in_play(&self) -> bool {
+        !self.waiting && self.held.is_none()
+    }
 }
 
 pub struct Flipper {
@@ -140,6 +162,13 @@ pub struct Table {
     /// Contacts that stopped, with the step they stopped at, not yet reported.
     leaving: BTreeMap<(u32, Thing), u64>,
     touching: BTreeSet<(u32, Thing)>,
+    drop_colliders: Vec<ColliderHandle>,
+    /// Which drop targets are down.
+    pub drops_down: Vec<bool>,
+    /// Balls each hole holds, oldest first, with the step they were caught at.
+    held: Vec<VecDeque<(u32, u64)>>,
+    /// Balls just ejected from a hole, ignored by it until they've left it.
+    ejected: BTreeSet<(u32, usize)>,
     launch_key: bool,
     buttons: [bool; 2],
 }
@@ -193,6 +222,27 @@ impl Table {
             );
             things.insert(h, Thing::Switch(i));
         }
+        let mut drop_colliders = Vec::new();
+        for (i, d) in layout.drop_targets.iter().enumerate() {
+            let h = world.insert_collider(
+                ColliderBuilder::segment(d.a, d.b).restitution(d.restitution).collision_groups(layer_groups(d.layer)),
+                Some(ground),
+            );
+            things.insert(h, Thing::DropTarget(i));
+            drop_colliders.push(h);
+        }
+        for (i, hole) in layout.holes.iter().enumerate() {
+            let shape = SensorShape::Circle { center: hole.center, radius: hole.radius };
+            let h = world
+                .insert_collider(sensor(shape).sensor(true).collision_groups(layer_groups(hole.layer)), Some(ground));
+            things.insert(h, Thing::Hole(i));
+        }
+        for (i, sp) in layout.spinners.iter().enumerate() {
+            let shape = SensorShape::Segment { a: sp.a, b: sp.b };
+            let h = world
+                .insert_collider(sensor(shape).sensor(true).collision_groups(layer_groups(sp.layer)), Some(ground));
+            things.insert(h, Thing::Spinner(i));
+        }
         for (i, t) in layout.transitions.iter().enumerate() {
             // Two-way lines also see balls on the target layer, so they can bring them back.
             let layers = if t.two_way { t.layer.bit() | t.target.bit() } else { t.layer.bit() };
@@ -220,6 +270,8 @@ impl Table {
             layout.switches.len(),
             layout.transitions.len()
         );
+        let drops_down = vec![false; layout.drop_targets.len()];
+        let held = layout.holes.iter().map(|_| VecDeque::new()).collect();
         Self {
             world,
             hooks,
@@ -233,6 +285,10 @@ impl Table {
             pending: Vec::new(),
             leaving: BTreeMap::new(),
             touching: BTreeSet::new(),
+            drop_colliders,
+            drops_down,
+            held,
+            ejected: BTreeSet::new(),
             launch_key: false,
             buttons: [false; 2],
         }
@@ -290,7 +346,7 @@ impl Table {
         );
         let number = self.next_ball;
         self.next_ball += 1;
-        let mut ball = Ball { number, body, collider, layer: Layer::PLAYFIELD, height: 0.0, waiting: false };
+        let mut ball = Ball { number, body, collider, layer: Layer::PLAYFIELD, height: 0.0, waiting: false, held: None };
         set_layer(&mut self.world, &mut ball, Layer::PLAYFIELD);
         self.balls.push(ball);
         self.pending.push(Timed { step: self.steps, event: Event::Serve { ball: number, pos } });
@@ -327,9 +383,62 @@ impl Table {
         }
     }
 
+    /// The element with this id in the table file.
+    pub fn find(&self, id: &str) -> Option<Thing> {
+        fn pos<'a>(mut ids: impl Iterator<Item = &'a Option<String>>, id: &str) -> Option<usize> {
+            ids.position(|i| i.as_deref() == Some(id))
+        }
+        let l = &self.layout;
+        pos(l.walls.iter().map(|w| &w.id), id)
+            .map(Thing::Wall)
+            .or_else(|| pos(l.flippers.iter().map(|f| &f.id), id).map(Thing::Flipper))
+            .or_else(|| pos(l.switches.iter().map(|s| &s.id), id).map(Thing::Switch))
+            .or_else(|| pos(l.transitions.iter().map(|t| &t.id), id).map(Thing::Transition))
+            .or_else(|| pos(l.drop_targets.iter().map(|d| &d.id), id).map(Thing::DropTarget))
+            .or_else(|| pos(l.holes.iter().map(|h| &h.id), id).map(Thing::Hole))
+            .or_else(|| pos(l.spinners.iter().map(|s| &s.id), id).map(Thing::Spinner))
+    }
+
+    /// Raises a drop target again (a ball in the way gets pushed aside).
+    pub fn reset_drop_target(&mut self, target: usize) {
+        if std::mem::replace(&mut self.drops_down[target], false) {
+            self.world.colliders[self.drop_colliders[target]].set_enabled(true);
+            self.pending.push(Timed { step: self.steps, event: Event::Reset { target } });
+        }
+    }
+
+    /// Lets the oldest ball in a hole go; false if it was empty.
+    pub fn eject(&mut self, hole: usize) -> bool {
+        let Some((number, _)) = self.held[hole].pop_front() else { return false };
+        let (center, vel) = (self.layout.holes[hole].center, self.layout.holes[hole].eject);
+        let b = self.balls.iter_mut().find(|b| b.number == number).unwrap();
+        b.held = None;
+        let body = &mut self.world.bodies[b.body];
+        body.set_enabled(true);
+        body.set_translation(center, true);
+        body.set_linvel(vel, true);
+        self.ejected.insert((number, hole));
+        self.pending.push(Timed { step: self.steps, event: Event::Eject { ball: number, hole } });
+        true
+    }
+
+    /// How many balls a hole holds.
+    pub fn held_in(&self, hole: usize) -> usize {
+        self.held[hole].len()
+    }
+
     /// Advance one fixed physics step and return what happened since the last one.
     pub fn step(&mut self) -> Vec<Timed> {
         let dt = self.world.integration_parameters.dt;
+
+        // Scoops let their balls go after a while; locks wait for `eject`.
+        for hole in 0..self.held.len() {
+            if let (Some(after), Some(&(_, caught))) = (self.layout.holes[hole].eject_after, self.held[hole].front())
+                && self.steps >= caught + (after * PHYSICS_HZ).round() as u64
+            {
+                self.eject(hole);
+            }
+        }
 
         for f in &mut self.flippers {
             let pressed = self.buttons[(f.def.button == Button::Right) as usize];
@@ -342,16 +451,18 @@ impl Table {
         }
 
         let g = self.layout.gravity;
-        for b in self.balls.iter_mut().filter(|b| !b.waiting) {
+        for b in self.balls.iter_mut().filter(|b| b.in_play()) {
             let body = &mut self.world.bodies[b.body];
             let layer = &self.layout.layers[b.layer.index()];
             let mut v = body.linvel();
-            // Ramps: gravity along the slope, on top of the table tilt.
+            // Ramps: gravity along the slope and across a banked track, on top
+            // of the table tilt.
             b.height = match &layer.ramp {
                 Some(ramp) => {
-                    let (h, tangent, slope) = ramp.sample(body.translation());
-                    v -= tangent * (g * slope * dt);
-                    h
+                    let p = ramp.sample(body.translation());
+                    let right = Vector::new(p.tangent.y, -p.tangent.x);
+                    v += (right * p.bank.sin() - p.tangent * p.slope) * (g * dt);
+                    p.height
                 }
                 None => layer.height,
             };
@@ -397,9 +508,20 @@ impl Table {
                 },
                 (None, None) => continue,
             };
-            if let Thing::Transition(t) = thing {
-                self.cross(ball, t, started, events);
-                continue;
+            match thing {
+                Thing::Transition(t) => {
+                    self.cross(ball, t, started, events);
+                    continue;
+                }
+                Thing::Hole(h) => {
+                    if started {
+                        self.capture(ball, h, events);
+                    } else {
+                        self.ejected.remove(&(ball, h));
+                    }
+                    continue;
+                }
+                _ => {}
             }
             let key = (ball, thing);
             if started {
@@ -407,6 +529,7 @@ impl Table {
                 if self.leaving.remove(&key).is_none() && self.touching.insert(key) {
                     let event = match thing {
                         Thing::Switch(switch) => Event::Switch { ball, switch },
+                        Thing::Spinner(spinner) => Event::Spin { ball, spinner, spins: self.spins(ball, spinner) },
                         _ => Event::Touch { ball, thing },
                     };
                     events.push(Timed { step: self.steps, event });
@@ -415,6 +538,13 @@ impl Table {
                     {
                         self.kick(ball, w);
                         events.push(Timed { step: self.steps, event: Event::Kick { ball, thing } });
+                    }
+                    if let Thing::DropTarget(target) = thing
+                        && self.drops(ball, target)
+                    {
+                        self.drops_down[target] = true;
+                        self.world.colliders[self.drop_colliders[target]].set_enabled(false);
+                        events.push(Timed { step: self.steps, event: Event::Drop { ball, target } });
                     }
                 }
             } else if self.touching.contains(&key) {
@@ -427,7 +557,7 @@ impl Table {
         for ((ball, thing), at) in done {
             self.leaving.remove(&(ball, thing));
             self.touching.remove(&(ball, thing));
-            if !matches!(thing, Thing::Switch(_)) {
+            if !matches!(thing, Thing::Switch(_) | Thing::Spinner(_)) {
                 events.push(Timed { step: at, event: Event::Leave { ball, thing } });
             }
         }
@@ -460,6 +590,49 @@ impl Table {
         }
     }
 
+    fn ball_velocity(&self, number: u32) -> Vector {
+        let b = self.balls.iter().find(|b| b.number == number).unwrap();
+        self.world.bodies[b.body].linvel()
+    }
+
+    /// Whether this hit drops the target: into its front, hard enough.
+    fn drops(&self, number: u32, target: usize) -> bool {
+        let d = &self.layout.drop_targets[target];
+        let into_front = -self.ball_velocity(number).dot(d.facing);
+        into_front >= d.min_speed
+    }
+
+    /// Spins from the ball's speed across the spinner (at least one).
+    fn spins(&self, number: u32, spinner: usize) -> u32 {
+        let s = &self.layout.spinners[spinner];
+        let along = (s.b - s.a).normalize();
+        let across = Vector::new(-along.y, along.x);
+        ((self.ball_velocity(number).dot(across).abs() * s.spins_per_mps).round() as u32).max(1)
+    }
+
+    /// A ball rolled into hole `h`: hold it there, unless it was just ejected
+    /// from it or is too fast.
+    fn capture(&mut self, number: u32, h: usize, events: &mut Vec<Timed>) {
+        let hole = &self.layout.holes[h];
+        if self.ejected.contains(&(number, h)) || self.ball_velocity(number).length() > hole.max_speed {
+            return;
+        }
+        let b = self.balls.iter_mut().find(|b| b.number == number).unwrap();
+        if b.held.is_some() {
+            return;
+        }
+        b.held = Some(h);
+        let body = &mut self.world.bodies[b.body];
+        body.set_translation(hole.center, false);
+        body.set_linvel(Vector::ZERO, false);
+        body.set_enabled(false);
+        self.held[h].push_back((number, self.steps));
+        // Its contacts end while it's held, without leave events.
+        self.touching.retain(|&(n, _)| n != number);
+        self.leaving.retain(|&(n, _), _| n != number);
+        events.push(Timed { step: self.steps, event: Event::Capture { ball: number, hole: h } });
+    }
+
     /// Pushes the ball away from the nearest point of wall `w` at its kick speed,
     /// keeping its speed along the wall.
     fn kick(&mut self, number: u32, w: usize) {
@@ -486,7 +659,7 @@ impl Table {
         let mut i = 0;
         while i < self.balls.len() {
             let b = &self.balls[i];
-            if !b.waiting && self.world.bodies[b.body].translation().y < DRAIN_Y {
+            if b.in_play() && self.world.bodies[b.body].translation().y < DRAIN_Y {
                 let number = b.number;
                 events.push(Timed { step: self.steps, event: Event::Drain { ball: number } });
                 let b = self.balls.swap_remove(i);
@@ -511,6 +684,11 @@ impl Table {
             Thing::Transition(i) => {
                 self.layout.transitions[i].id.clone().unwrap_or_else(|| format!("transition#{i}"))
             }
+            Thing::DropTarget(i) => {
+                self.layout.drop_targets[i].id.clone().unwrap_or_else(|| format!("drop_target#{i}"))
+            }
+            Thing::Hole(i) => self.layout.holes[i].id.clone().unwrap_or_else(|| format!("hole#{i}")),
+            Thing::Spinner(i) => self.layout.spinners[i].id.clone().unwrap_or_else(|| format!("spinner#{i}")),
         }
     }
 
@@ -524,6 +702,13 @@ impl Table {
             Event::Leave { ball, thing } => format!("leave ball#{ball} {}", self.name(thing)),
             Event::Kick { ball, thing } => format!("kick ball#{ball} {}", self.name(thing)),
             Event::Switch { ball, switch } => format!("switch ball#{ball} {}", self.name(Thing::Switch(switch))),
+            Event::Drop { ball, target } => format!("drop ball#{ball} {}", self.name(Thing::DropTarget(target))),
+            Event::Reset { target } => format!("reset {}", self.name(Thing::DropTarget(target))),
+            Event::Capture { ball, hole } => format!("capture ball#{ball} {}", self.name(Thing::Hole(hole))),
+            Event::Eject { ball, hole } => format!("eject ball#{ball} {}", self.name(Thing::Hole(hole))),
+            Event::Spin { ball, spinner, spins } => {
+                format!("spin ball#{ball} {} x{spins}", self.name(Thing::Spinner(spinner)))
+            }
             Event::Cross { ball, transition, from, to } => format!(
                 "cross ball#{ball} {}: {} -> {}",
                 self.name(Thing::Transition(transition)),

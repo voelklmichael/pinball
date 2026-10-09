@@ -14,7 +14,8 @@ use rapier2d::math::Vector;
 use serde::Deserialize;
 
 use crate::layout::{
-    BallDef, Button, FlipperDef, Launcher, Layer, LayerDef, Layout, Ramp, SensorShape, Switch, Transition, Wall,
+    BallDef, Button, DropTarget, FlipperDef, Hole, Launcher, Layer, LayerDef, Layout, Ramp, SensorShape, Spinner, Switch,
+    Transition, Wall,
 };
 
 type P = [f32; 2];
@@ -74,6 +75,10 @@ pub struct RampSpec {
     /// `[position, height]` pairs: position along the centreline from 0
     /// (entrance) to 1 (exit), height above the playfield in metres.
     pub heights: Vec<[f32; 2]>,
+    /// `[position, degrees]` pairs: sideways tilt along the ramp. Positive
+    /// pushes the ball toward the right rail (as seen going up the ramp).
+    #[serde(default)]
+    pub bank: Vec<[f32; 2]>,
     /// Layer the entrance is on.
     pub from: String,
     /// Layer the ball lands on at the exit.
@@ -157,6 +162,9 @@ pub enum Element {
     Flipper(Flipper),
     Switch(SwitchSpec),
     Transition(TransitionSpec),
+    DropTarget(DropTargetSpec),
+    Hole(HoleSpec),
+    Spinner(SpinnerSpec),
 }
 
 /// The curves a flipper outline is made of: walls without id or physics settings.
@@ -340,6 +348,62 @@ pub struct TransitionSpec {
     pub two_way: bool,
 }
 
+/// Line `from`-`to` that blocks balls until hit hard enough into its front,
+/// then drops until reset.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DropTargetSpec {
+    pub id: Option<String>,
+    pub from: P,
+    pub to: P,
+    /// `[dx, dy]`: the way the front faces, toward where balls come from.
+    pub facing: P,
+    /// Minimum speed into the front (m/s) that drops it.
+    #[serde(default = "default_drop_min_speed")]
+    pub min_speed: f32,
+    pub restitution: Option<f32>,
+}
+
+fn default_drop_min_speed() -> f32 {
+    0.3
+}
+
+/// Scoop, saucer or ball lock.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HoleSpec {
+    pub id: Option<String>,
+    pub center: P,
+    #[serde(default = "default_hole_radius")]
+    pub radius: f32,
+    /// `[vx, vy]` a ball leaves with.
+    pub eject: P,
+    /// Seconds until a caught ball is ejected; without it the hole is a lock
+    /// that holds balls until the rules eject them.
+    pub eject_after: Option<f32>,
+    /// Faster balls roll over it (saucers).
+    pub max_speed: Option<f32>,
+}
+
+fn default_hole_radius() -> f32 {
+    0.012
+}
+
+/// A flap on line `from`-`to` that spins when balls pass.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpinnerSpec {
+    pub id: Option<String>,
+    pub from: P,
+    pub to: P,
+    #[serde(default = "default_spins_per_mps")]
+    pub spins_per_mps: f32,
+}
+
+fn default_spins_per_mps() -> f32 {
+    8.0
+}
+
 #[derive(Deserialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum Key {
@@ -415,6 +479,9 @@ impl Element {
             Element::Flipper(_) => "flipper",
             Element::Switch(_) => "switch",
             Element::Transition(_) => "transition",
+            Element::DropTarget(_) => "drop_target",
+            Element::Hole(_) => "hole",
+            Element::Spinner(_) => "spinner",
             _ => self.wall().unwrap().kind(),
         }
     }
@@ -424,6 +491,9 @@ impl Element {
             Element::Flipper(f) => f.id.as_deref(),
             Element::Switch(s) => s.id.as_deref(),
             Element::Transition(t) => t.id.as_deref(),
+            Element::DropTarget(d) => d.id.as_deref(),
+            Element::Hole(h) => h.id.as_deref(),
+            Element::Spinner(s) => s.id.as_deref(),
             _ => self.wall().unwrap().props().id,
         }
     }
@@ -435,7 +505,12 @@ impl Element {
             Element::Bezier(c) => Some(c),
             Element::Polyline(c) => Some(c),
             Element::Path(c) => Some(c),
-            Element::Flipper(_) | Element::Switch(_) | Element::Transition(_) => None,
+            Element::Flipper(_)
+            | Element::Switch(_)
+            | Element::Transition(_)
+            | Element::DropTarget(_)
+            | Element::Hole(_)
+            | Element::Spinner(_) => None,
         }
     }
 }
@@ -621,6 +696,9 @@ impl TableFile {
         let mut flippers = Vec::new();
         let mut switches = Vec::new();
         let mut transitions = Vec::new();
+        let mut drop_targets = Vec::new();
+        let mut holes = Vec::new();
+        let mut spinners = Vec::new();
         // Layer and element ids share one namespace.
         let mut ids = std::collections::HashSet::new();
         let mut claim = |id: &str| -> Result<(), String> {
@@ -722,6 +800,49 @@ impl TableFile {
                             two_way: t.two_way,
                         });
                     }
+                    Element::DropTarget(d) => {
+                        let facing = v(d.facing);
+                        check(facing.length() > 0.0, || "facing is zero".into()).map_err(ctx)?;
+                        check(d.from != d.to, || "from and to are the same point".into()).map_err(ctx)?;
+                        check(d.min_speed >= 0.0, || "min_speed must be >= 0".into()).map_err(ctx)?;
+                        let (restitution, _) =
+                            wall_defaults(&Props { restitution: d.restitution, ..Props::default() });
+                        check_coefficient("restitution", restitution).map_err(ctx)?;
+                        drop_targets.push(DropTarget {
+                            id,
+                            layer,
+                            a: v(d.from),
+                            b: v(d.to),
+                            facing: facing.normalize(),
+                            min_speed: d.min_speed,
+                            restitution,
+                        });
+                    }
+                    Element::Hole(h) => {
+                        check(h.radius > 0.0, || "radius must be > 0".into()).map_err(ctx)?;
+                        check(h.eject_after.is_none_or(|t| t >= 0.0), || "eject_after must be >= 0".into())
+                            .map_err(ctx)?;
+                        holes.push(Hole {
+                            id,
+                            layer,
+                            center: v(h.center),
+                            radius: h.radius,
+                            eject: v(h.eject),
+                            eject_after: h.eject_after,
+                            max_speed: h.max_speed.unwrap_or(f32::MAX),
+                        });
+                    }
+                    Element::Spinner(sp) => {
+                        check(sp.from != sp.to, || "from and to are the same point".into()).map_err(ctx)?;
+                        check(sp.spins_per_mps > 0.0, || "spins_per_mps must be > 0".into()).map_err(ctx)?;
+                        spinners.push(Spinner {
+                            id,
+                            layer,
+                            a: v(sp.from),
+                            b: v(sp.to),
+                            spins_per_mps: sp.spins_per_mps,
+                        });
+                    }
                     _ => {
                         let wall = el.wall().unwrap();
                         let props = wall.props();
@@ -768,6 +889,9 @@ impl TableFile {
             flippers,
             switches,
             transitions,
+            drop_targets,
+            holes,
+            spinners,
         })
     }
 }
@@ -800,6 +924,12 @@ fn ramp(r: &RampSpec, tolerance: f32) -> Result<Ramp, String> {
     check(r.heights.iter().all(|h| (0.0..=1.0).contains(&h[0]) && h[1] >= 0.0), || {
         "heights must be [position 0..1, height >= 0] pairs".into()
     })?;
+    for w in r.bank.windows(2) {
+        check(w[0][0] < w[1][0], || "bank positions must increase".into())?;
+    }
+    check(r.bank.iter().all(|b| (0.0..=1.0).contains(&b[0]) && b[1].abs() < 60.0), || {
+        "bank must be [position 0..1, degrees between -60 and 60] pairs".into()
+    })?;
     let coarse = sample_path(v(r.center.start), &r.center.segments, tolerance).map_err(|e| format!("center: {e}"))?;
 
     // Densify so the height profile and the rails follow the curve closely.
@@ -817,19 +947,8 @@ fn ramp(r: &RampSpec, tolerance: f32) -> Result<Ramp, String> {
         along.push(along.last().unwrap() + w[0].distance(w[1]));
     }
     let total = *along.last().unwrap();
-    let height_at = |f: f32| {
-        let h = &r.heights;
-        if f <= h[0][0] {
-            return h[0][1];
-        }
-        for w in h.windows(2) {
-            if f <= w[1][0] {
-                return w[0][1] + (w[1][1] - w[0][1]) * (f - w[0][0]) / (w[1][0] - w[0][0]);
-            }
-        }
-        h[h.len() - 1][1]
-    };
-    let heights = along.iter().map(|s| height_at(s / total)).collect();
+    let heights = along.iter().map(|s| profile(&r.heights, s / total)).collect();
+    let banks = along.iter().map(|s| if r.bank.is_empty() { 0.0 } else { profile(&r.bank, s / total).to_radians() }).collect();
 
     let m = center.len();
     let (mut left, mut right) = (Vec::new(), Vec::new());
@@ -839,7 +958,20 @@ fn ramp(r: &RampSpec, tolerance: f32) -> Result<Ramp, String> {
         left.push(center[k] + normal);
         right.push(center[k] - normal);
     }
-    Ok(Ramp { center, heights, left, right })
+    Ok(Ramp { center, heights, banks, left, right })
+}
+
+/// Linear interpolation in `[position, value]` pairs, flat beyond the ends.
+fn profile(points: &[[f32; 2]], f: f32) -> f32 {
+    if f <= points[0][0] {
+        return points[0][1];
+    }
+    for w in points.windows(2) {
+        if f <= w[1][0] {
+            return w[0][1] + (w[1][1] - w[0][1]) * (f - w[0][0]) / (w[1][0] - w[0][0]);
+        }
+    }
+    points[points.len() - 1][1]
 }
 
 fn flipper(f: &Flipper, layer: Layer, tolerance: f32) -> Result<FlipperDef, String> {
