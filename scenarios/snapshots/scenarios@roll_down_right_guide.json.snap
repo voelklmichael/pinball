@@ -1,0 +1,13 @@
+---
+source: scenario/tests/scenarios.rs
+description: A slow ball on the right guide rolls onto the resting right flipper and drains; it must not get stuck in a dip where the guide meets the flipper.
+input_file: scenarios/roll_down_right_guide.json
+---
+  0.000  serve ball#1 at (0.370, 0.180)
+  0.002  touch ball#1 outer_wall
+  0.352  touch ball#1 right_flipper
+  0.350  leave ball#1 outer_wall
+  0.677  leave ball#1 right_flipper
+  0.715  touch ball#1 left_flipper
+  0.727  leave ball#1 left_flipper
+  0.973  drain ball#1

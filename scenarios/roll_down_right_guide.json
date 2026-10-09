@@ -1,0 +1,30 @@
+{
+  "description": "A slow ball on the right guide rolls onto the resting right flipper and drains; it must not get stuck in a dip where the guide meets the flipper.",
+  "table": "../tables/demo.json",
+  "duration": 3.0,
+  "serve": false,
+  "balls": [
+    {
+      "position": [
+        0.37,
+        0.18
+      ]
+    }
+  ],
+  "expect": [
+    {
+      "sequence": [
+        "touch outer_wall",
+        "touch right_flipper",
+        "drain"
+      ]
+    },
+    {
+      "event": "drain",
+      "between": [
+        0.0,
+        2.0
+      ]
+    }
+  ]
+}

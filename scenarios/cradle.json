@@ -7,6 +7,6 @@
   "inputs": [{ "at": 0.0, "press": "left" }],
   "expect": [
     {"never": "drain"},
-    {"at_end": {"near": [0.163, 0.163], "within": 0.01, "max_speed": 0.01}}
+    {"at_end": {"near": [0.174, 0.168], "within": 0.01, "max_speed": 0.01}}
   ]
 }

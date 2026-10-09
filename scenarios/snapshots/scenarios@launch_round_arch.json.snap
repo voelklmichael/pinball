@@ -11,16 +11,16 @@ input_file: scenarios/launch_round_arch.json
   0.560  leave ball#1 outer_wall
   0.681  touch ball#1 outer_wall
   0.702  leave ball#1 outer_wall
-  0.815  touch ball#1 outer_wall
-  0.819  leave ball#1 outer_wall
-  0.965  touch ball#1 right_flipper
-  0.971  leave ball#1 right_flipper
-  1.198  touch ball#1 outer_wall
-  1.206  leave ball#1 outer_wall
-  1.752  touch ball#1 outer_wall
-  1.760  leave ball#1 outer_wall
-  1.996  touch ball#1 right_flipper
-  2.013  leave ball#1 right_flipper
-  2.031  touch ball#1 left_flipper
-  2.040  leave ball#1 left_flipper
-  2.167  drain ball#1
+  0.812  touch ball#1 outer_wall
+  0.817  leave ball#1 outer_wall
+  0.962  touch ball#1 right_flipper
+  0.969  leave ball#1 right_flipper
+  1.223  touch ball#1 outer_wall
+  1.233  leave ball#1 outer_wall
+  1.704  touch ball#1 outer_wall
+  1.712  leave ball#1 outer_wall
+  1.933  touch ball#1 right_flipper
+  2.050  leave ball#1 right_flipper
+  2.073  touch ball#1 left_flipper
+  2.081  leave ball#1 left_flipper
+  2.263  drain ball#1

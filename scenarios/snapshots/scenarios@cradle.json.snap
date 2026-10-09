@@ -8,7 +8,9 @@ input_file: scenarios/cradle.json
   0.148  touch ball#1 left_flipper
   0.179  leave ball#1 left_flipper
   0.196  touch ball#1 left_flipper
-  0.575  touch ball#1 outer_wall
-  0.594  leave ball#1 outer_wall
-  0.652  touch ball#1 outer_wall
-    end  ball#1 at (0.163, 0.163) v=(0.00, -0.00) on playfield
+  0.533  touch ball#1 outer_wall
+  0.548  leave ball#1 left_flipper
+  0.550  leave ball#1 outer_wall
+  0.613  touch ball#1 left_flipper
+  0.615  touch ball#1 outer_wall
+    end  ball#1 at (0.174, 0.168) v=(0.00, -0.00) on playfield

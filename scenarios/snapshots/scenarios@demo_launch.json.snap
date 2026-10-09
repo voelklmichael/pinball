@@ -18,28 +18,34 @@ input_file: scenarios/demo_launch.json
   0.660  touch ball#1 kegel_1
   0.663  leave ball#1 kegel_2
   0.667  leave ball#1 kegel_1
-  0.821  touch ball#1 outer_wall
-  0.825  leave ball#1 outer_wall
-  0.863  touch ball#1 sling_left_back
-  0.871  leave ball#1 sling_left_back
-  0.933  touch ball#1 left_flipper
-  0.942  leave ball#1 left_flipper
-  1.050  touch ball#1 right_flipper
-  1.058  leave ball#1 right_flipper
-  1.356  touch ball#1 outer_wall
-  1.371  leave ball#1 outer_wall
-  1.390  touch ball#1 outer_wall
-  1.558  leave ball#1 outer_wall
-  1.600  touch ball#1 outer_wall
-  2.010  leave ball#1 outer_wall
-  2.027  touch ball#1 right_flipper
-  2.040  leave ball#1 right_flipper
-  2.223  touch ball#1 right_flipper
-  2.377  leave ball#1 right_flipper
-  2.415  touch ball#1 left_flipper
-  2.425  leave ball#1 left_flipper
-  2.644  drain ball#1
-  2.644  message BALL SAVED
-  2.644  serve ball#2 at (0.495, 0.300)
+  0.819  touch ball#1 outer_wall
+  0.823  leave ball#1 outer_wall
+  0.869  touch ball#1 sling_left_back
+  0.871  touch ball#1 sling_left
+  0.871  kick ball#1 sling_left
+  0.871  score +10 = 760
+  0.875  leave ball#1 sling_left
+  0.875  leave ball#1 sling_left_back
+  0.892  touch ball#1 outer_wall
+  0.900  leave ball#1 outer_wall
+  1.123  touch ball#1 outer_wall
+  1.131  leave ball#1 outer_wall
+  1.379  touch ball#1 outer_wall
+  1.390  leave ball#1 outer_wall
+  1.406  touch ball#1 outer_wall
+  1.438  leave ball#1 outer_wall
+  1.665  touch ball#1 outer_wall
+  1.685  leave ball#1 outer_wall
+  1.712  touch ball#1 outer_wall
+  2.100  leave ball#1 outer_wall
+  2.121  touch ball#1 outer_wall
+  2.129  leave ball#1 outer_wall
+  2.160  touch ball#1 right_flipper
+  2.312  leave ball#1 right_flipper
+  2.338  touch ball#1 left_flipper
+  2.346  leave ball#1 left_flipper
+  2.556  drain ball#1
+  2.556  message BALL SAVED
+  2.556  serve ball#2 at (0.495, 0.300)
     end  ball#2 at (0.495, 0.300) v=(0.00, 0.00) on playfield
-    end  score 750
+    end  score 760
