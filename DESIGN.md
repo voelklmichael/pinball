@@ -115,6 +115,6 @@ A 128×32 dot-matrix display in the style of the 1990s: score, mode intros, anim
 ## Next steps
 
 1. ~~Expand this document: layout, modes, scoring~~ (done, decisions recorded above).
-2. Extend the prototype in `crates/pinball-proto` to the layout above: orbits, ramps with layer switching, scoop, drop targets.
+2. ~~Extend the prototype to the layout above~~ (done 2026-10-09: all shots, layers, upper level, scoop, Kegelbahn, gates, kickback; headless shot tests write `target/svg/*.svg`).
 3. Rules engine (modes, multiball) on top of game events: "ramp hit", "target down", and so on.
 4. 2.5D view and dot-matrix display.
