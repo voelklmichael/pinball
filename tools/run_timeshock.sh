@@ -37,6 +37,19 @@ if [ ! -f "$EXE" ]; then
     printf '\x53\x51\x52' | dd of="$EXE" bs=1 seek=$off conv=notrunc status=none
 fi
 
+# Focus loss: the keyboard poll at 0x457730 treats any GetDeviceState error other
+# than DIERR_INPUTLOST as fatal, but Wine returns DIERR_NOTACQUIRED (8007000C), and
+# re-Acquire fails while unfocused. Always try to reacquire (je -> jmp at 0x457753);
+# if that fails, zero the 256-byte key buffer at 0x4a5920 instead of erroring out
+# (mov edi,0x4a5920; xor eax,eax; xor ecx,ecx; mov cl,0x40; rep stosd at 0x457772).
+# edi/ecx are saved by the function and set before their next use.
+kb=$((0x457753 - 0x401000 + 0x400))
+if [ "$(xxd -s $kb -l 1 -p "$EXE")" = "74" ]; then
+    printf '\xeb' | dd of="$EXE" bs=1 seek=$kb conv=notrunc status=none
+    printf '\xbf\x20\x59\x4a\x00\x31\xc0\x31\xc9\xb1\x40\xf3\xab' |
+        dd of="$EXE" bs=1 seek=$((0x457772 - 0x401000 + 0x400)) conv=notrunc status=none
+fi
+
 if ! grep -q '^\[Timeshock!_music\]' ddraw.ini; then
     printf '\n; Timeshock (music-enabled copy): no hooking, so mciSendCommandA reaches the ogg-winmm wrapper\n[Timeshock!_music]\nhook=0\n' >> ddraw.ini
 fi
