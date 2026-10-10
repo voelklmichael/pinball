@@ -1,0 +1,12 @@
+{
+  "description": "A weak shot pushes the flap partly open but doesn't get through, and rolls back down the lane.",
+  "table": "../tables/bench_flap.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.47, 0.50], "velocity": [0.0, 0.8] }],
+  "expect": [
+    {"event": "touch flap"},
+    {"never": "drain"},
+    {"at_end": {"near": [0.47, 0.0135], "within": 0.02}}
+  ]
+}

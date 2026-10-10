@@ -65,7 +65,7 @@ When fixing a physics bug, first add a scenario that shows it, then fix it, so i
 
 ### Checks
 
-Engine events are written like trace lines without time and ball number: `"launch"`, `"touch outer_wall"`, `"leave left_flipper"`, `"kick bumper"`, `"switch lane"`, `"cross loop.exit"` (a transition), `"drop kegel_1"`, `"reset kegel_1"`, `"capture scoop"`, `"eject scoop"`, `"spin spinner"`, `"flipper_up left_flipper"`, `"drain"`.
+Engine events are written like trace lines without time and ball number: `"launch"`, `"touch outer_wall"`, `"leave left_flipper"`, `"kick bumper"`, `"switch lane"`, `"cross loop.exit"` (a transition), `"touch shooter_gate"` (a flap), `"drop kegel_1"`, `"reset kegel_1"`, `"capture scoop"`, `"eject scoop"`, `"spin spinner"`, `"flipper_up left_flipper"`, `"drain"`.
 
 | Check | Passes if |
 |---|---|

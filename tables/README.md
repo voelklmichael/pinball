@@ -166,6 +166,22 @@ A flap on a line that balls pass through without being blocked. Reports how ofte
 
 Examples of all three: [bench_targets.json](bench_targets.json).
 
+## Flap
+
+A hinged gate, like the one at the top of the shooter lane. It's a bar from `pivot`, `length` long. A ball pushes it open from one side, turning it from `closed_deg` toward `open_deg`, and a spring swings it back shut. From the other side it rests on its stop and blocks like a wall. A weak ball may not push it open far enough and rolls back.
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `id` | no | | Name. Touching the flap is an event, e.g. `touch shooter_gate` |
+| `pivot` | yes | | Where it's hinged |
+| `length` | yes | | Bar length; leave a gap smaller than a ball (0.027) at the free end |
+| `closed_deg` | yes | | Angle when closed |
+| `open_deg` | yes | | Angle when fully open, 1° to 179° from `closed_deg`. It opens the short way round, so it is pushed open from the side it turns away from |
+| `restitution` | no | layer default | |
+| `friction` | no | layer default | |
+
+For example, hinged on the right wall of a shooter lane and pointing down-left across it, `"closed_deg": 205, "open_deg": 100` lets the launched ball up and stops balls coming back down. See [bench_flap.json](bench_flap.json).
+
 ## Flipper
 
 | Field | Required | Default | Meaning |

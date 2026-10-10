@@ -1,0 +1,12 @@
+{
+  "description": "A ball hitting the flap hard from behind, near its free end, bounces off: the flap rests on its stop.",
+  "table": "../tables/bench_flap.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.50, 0.80], "velocity": [0.0, -6.0] }],
+  "expect": [
+    {"event": "touch flap"},
+    {"never": "drain"},
+    {"at_end": {"near": [0.50, 0.6165], "within": 0.01, "max_speed": 0.01}}
+  ]
+}

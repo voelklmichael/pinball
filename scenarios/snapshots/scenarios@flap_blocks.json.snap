@@ -1,0 +1,16 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A ball hitting the flap hard from behind, near its free end, bounces off: the flap rests on its stop."
+input_file: scenarios/flap_blocks.json
+---
+  0.000  serve ball#1 at (0.500, 0.800)
+  0.033  touch ball#1 flap
+  0.038  leave ball#1 flap
+  0.269  touch ball#1 box
+  0.277  leave ball#1 box
+  0.692  touch ball#1 flap
+  0.702  leave ball#1 flap
+  1.023  touch ball#1 flap
+  1.056  leave ball#1 flap
+  1.112  touch ball#1 flap
+    end  ball#1 at (0.500, 0.616) v=(-0.00, 0.00) on playfield

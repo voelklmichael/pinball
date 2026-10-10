@@ -85,6 +85,13 @@ pub fn render(layout: &Layout, traces: &[(Vec<Vector>, &str)]) -> String {
     for sp in &layout.spinners {
         poly(&mut s, top, &[sp.a, sp.b], false, "stroke:#888;stroke-width:3;stroke-dasharray:2 2");
     }
+    for f in &layout.flaps {
+        // Closed, and faintly where it opens to.
+        let tip = |angle: f32| f.pivot + Vector::new(angle.cos(), angle.sin()) * f.length;
+        poly(&mut s, top, &[f.pivot, tip(f.open)], false, "stroke:#ff9f00;stroke-width:2;stroke-opacity:0.35");
+        poly(&mut s, top, &[f.pivot, tip(f.closed)], false, "stroke:#ff9f00;stroke-width:4");
+        circle(&mut s, top, f.pivot, 0.003, "fill:#ff9f00");
+    }
     for f in &layout.flippers {
         let pose = Pose::new(f.pivot, f.rest);
         let hull = rapier2d::parry::transformation::convex_hull(&f.outline);

@@ -1,0 +1,19 @@
+{
+  "name": "Bench: flap gate",
+  "size": [0.52, 1.0],
+  "angle_deg": 6.5,
+  "gravity": 22.0,
+  "ball": { "radius": 0.0135 },
+  "launcher": { "position": [0.47, 0.10], "start_velocity": [0.0, 3.0] },
+  "layers": [
+    {
+      "id": "playfield",
+      "elements": [
+        { "type": "polyline", "id": "box", "points": [[0, 0], [0.52, 0], [0.52, 1.0], [0, 1.0]], "closed": true },
+
+        { "type": "line", "id": "lane_wall", "from": [0.42, 0.0], "to": [0.42, 0.60] },
+        { "type": "flap", "id": "flap", "pivot": [0.42, 0.60], "length": 0.095, "closed_deg": 0, "open_deg": 80 }
+      ]
+    }
+  ]
+}

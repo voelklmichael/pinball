@@ -3,18 +3,28 @@
 //! scoring and rules live in `game`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::f32::consts::{PI, TAU};
 use std::sync::Mutex;
 
 use rapier2d::parry::shape::PolylineFlags;
 use rapier2d::prelude::*;
 
-use crate::layout::{Button, FlipperDef, Layer, Layout, SensorShape};
+use crate::layout::{Button, Flap, FlipperDef, Layer, Layout, SensorShape};
 
 pub const PHYSICS_HZ: f32 = 480.0;
 const DRAIN_Y: f32 = -0.03;
 /// A contact only counts as ended after this many steps (10 ms) without
 /// touching, so a ball rolling along a wall doesn't flicker touch/leave.
 const LEAVE_DEBOUNCE_STEPS: u64 = 5;
+/// Flaps are light bars, so any real shot swings them open.
+const FLAP_MASS: f32 = 0.01;
+const FLAP_RADIUS: f32 = 0.003;
+/// The return spring, as angular acceleration per radian open (1/s²), and its
+/// damping (1/s): critically damped, so a flap swings shut without bouncing.
+const FLAP_SPRING: f32 = 900.0;
+const FLAP_DAMPING: f32 = 60.0;
+/// Within this angle (radians) of closed, a flap rests on its stop.
+const FLAP_CLOSED: f32 = 0.03;
 
 /// Something a ball can touch: an index into the layout's walls, flippers,
 /// switches or transitions, or another ball's number.
@@ -28,6 +38,7 @@ pub enum Thing {
     DropTarget(usize),
     Hole(usize),
     Spinner(usize),
+    Flap(usize),
 }
 
 /// Balls are numbered from 1 in the order they enter play.
@@ -113,9 +124,20 @@ fn layer_groups(layer: Layer) -> InteractionGroups {
     groups(layer.bit(), u32::MAX)
 }
 
-/// Lets balls through one-way walls when they move in the wall's direction.
+/// When a ball goes through a wall instead of bouncing off it.
+#[derive(Clone, Copy)]
+enum Pass {
+    /// One-way wall: while the ball moves in this direction.
+    Moving(Vector),
+    /// A flap's stop: unless the flap is closed and the ball's centre is
+    /// behind it (not on the `front` side of the line through the pivot `at`).
+    /// Otherwise only the flap itself is in the ball's way.
+    Stop { flap: RigidBodyHandle, closed: f32, at: Vector, front: Vector },
+}
+
+/// Lets balls through one-way walls and flap stops.
 struct GateHooks {
-    gates: HashMap<ColliderHandle, Vector>,
+    gates: HashMap<ColliderHandle, Pass>,
 }
 
 impl PhysicsHooks for GateHooks {
@@ -126,9 +148,15 @@ impl PhysicsHooks for GateHooks {
             _ => return,
         };
         let Some(ball) = ball else { return };
-        if ctx.bodies[ball].linvel().dot(pass) > 0.0
-            && let Some(m) = ctx.rigid_mut()
-        {
+        let body = &ctx.bodies[ball];
+        let through = match pass {
+            Pass::Moving(dir) => body.linvel().dot(dir) > 0.0,
+            Pass::Stop { flap, closed, at, front } => {
+                let open = (ctx.bodies[flap].rotation().angle() - closed + PI).rem_euclid(TAU) - PI;
+                open.abs() > FLAP_CLOSED || (body.translation() - at).dot(front) > 0.0
+            }
+        };
+        if through && let Some(m) = ctx.rigid_mut() {
             m.solver_contacts.clear();
         }
     }
@@ -154,6 +182,8 @@ pub struct Table {
     pub layout: Layout,
     pub balls: Vec<Ball>,
     pub flippers: Vec<Flipper>,
+    /// Each flap's body and its stop.
+    flaps: Vec<(RigidBodyHandle, ColliderHandle)>,
     /// What each non-ball collider is, and the other way round.
     things: HashMap<ColliderHandle, Thing>,
     colliders: BTreeMap<Thing, ColliderHandle>,
@@ -210,7 +240,7 @@ impl Table {
             let h = world.insert_collider(builder, Some(ground));
             things.insert(h, Thing::Wall(i));
             if let Some(pass) = w.one_way {
-                hooks.gates.insert(h, pass);
+                hooks.gates.insert(h, Pass::Moving(pass));
             }
         }
 
@@ -268,6 +298,15 @@ impl Table {
             flippers.push(flipper);
         }
 
+        let mut flaps = Vec::new();
+        for (i, f) in layout.flaps.iter().enumerate() {
+            let parts = make_flap(&mut world, ground, f);
+            // Only the flap reports touches: the stop is where it is when closed.
+            things.insert(parts.collider, Thing::Flap(i));
+            hooks.gates.insert(parts.stop, parts.stop_pass);
+            flaps.push((parts.body, parts.stop));
+        }
+
         let layer_names: Vec<&str> = layout.layers.iter().map(|l| l.name.as_str()).collect();
         log::info!(
             "table \"{}\": layers [{}], {} walls, {} flippers, {} switches, {} transitions",
@@ -288,6 +327,7 @@ impl Table {
             layout,
             balls: Vec::new(),
             flippers,
+            flaps,
             things,
             colliders,
             disabled: BTreeSet::new(),
@@ -321,6 +361,12 @@ impl Table {
 
     pub fn flipper_pose(&self, f: &Flipper) -> Pose {
         *self.world.bodies[f.body].position()
+    }
+
+    /// Where flap `i` is: its pivot, turned to its current angle (the bar
+    /// points along local +x).
+    pub fn flap_pose(&self, i: usize) -> Pose {
+        *self.world.bodies[self.flaps[i].0].position()
     }
 
     /// Flipper buttons. Raises FlipperUp/FlipperDown for each flipper on a
@@ -409,6 +455,7 @@ impl Table {
             .or_else(|| pos(l.drop_targets.iter().map(|d| &d.id), id).map(Thing::DropTarget))
             .or_else(|| pos(l.holes.iter().map(|h| &h.id), id).map(Thing::Hole))
             .or_else(|| pos(l.spinners.iter().map(|s| &s.id), id).map(Thing::Spinner))
+            .or_else(|| pos(l.flaps.iter().map(|f| &f.id), id).map(Thing::Flap))
     }
 
     /// Raises a drop target again (a ball in the way gets pushed aside).
@@ -460,6 +507,9 @@ impl Table {
             return;
         }
         self.world.colliders[h].set_enabled(on);
+        if let Thing::Flap(i) = thing {
+            self.world.colliders[self.flaps[i].1].set_enabled(on);
+        }
         if on {
             self.disabled.remove(&thing);
         } else {
@@ -730,6 +780,7 @@ impl Table {
             }
             Thing::Hole(i) => self.layout.holes[i].id.clone().unwrap_or_else(|| format!("hole#{i}")),
             Thing::Spinner(i) => self.layout.spinners[i].id.clone().unwrap_or_else(|| format!("spinner#{i}")),
+            Thing::Flap(i) => self.layout.flaps[i].id.clone().unwrap_or_else(|| format!("flap#{i}")),
         }
     }
 
@@ -798,4 +849,54 @@ fn make_flipper(world: &mut PhysicsWorld, def: &FlipperDef) -> (Flipper, Collide
         collider,
     );
     (Flipper { def: def.clone(), body, outline, angle: def.rest }, handle)
+}
+
+struct FlapParts {
+    body: RigidBodyHandle,
+    collider: ColliderHandle,
+    /// Fixed copy of the closed flap that holds balls from behind.
+    stop: ColliderHandle,
+    stop_pass: Pass,
+}
+
+/// A light bar on a hinge at the pivot, attached to `ground`: the joint stops
+/// it at the closed angle and fully open, and a spring pulls it shut.
+///
+/// Pushed from behind, a flap this light would give way against its stop, so
+/// a fixed copy of the closed bar does the stopping: it only touches balls
+/// whose centre is behind the closed flap. From the front only the flap is
+/// in the way.
+fn make_flap(world: &mut PhysicsWorld, ground: RigidBodyHandle, f: &Flap) -> FlapParts {
+    let bar = || {
+        ColliderBuilder::capsule_from_endpoints(Vector::ZERO, Vector::new(f.length, 0.0), FLAP_RADIUS)
+            .restitution(f.restitution)
+            .friction(f.friction)
+            .collision_groups(layer_groups(f.layer))
+    };
+    let closed = Pose::new(f.pivot, f.closed);
+    let (body, collider) = world.insert(
+        // Only the spring closes it; the table tilt would pull it to one side.
+        RigidBodyBuilder::dynamic().pose(closed).gravity_scale(0.0).ccd_enabled(true),
+        bar().mass(FLAP_MASS),
+    );
+    // The joint angle is measured from the closed position, so it never wraps.
+    let sweep = f.sweep();
+    let mut joint = RevoluteJointBuilder::new()
+        .limits(if sweep > 0.0 { [0.0, sweep] } else { [sweep, 0.0] })
+        .motor_position(0.0, FLAP_SPRING, FLAP_DAMPING)
+        // All walls are on `ground`: the flap swings through them, not against them.
+        .contacts_enabled(false)
+        .build();
+    joint.data.set_local_frame1(closed);
+    world.insert_impulse_joint(ground, body, joint);
+
+    let stop = world.insert_collider(
+        bar().position(closed).active_hooks(ActiveHooks::MODIFY_SOLVER_CONTACTS),
+        Some(ground),
+    );
+    // The flap opens toward the side its free end turns to; balls push it
+    // from the other side.
+    let along = Vector::new(f.closed.cos(), f.closed.sin());
+    let front = -Vector::new(-along.y, along.x) * sweep.signum();
+    FlapParts { body, collider, stop, stop_pass: Pass::Stop { flap: body, closed: f.closed, at: f.pivot, front } }
 }

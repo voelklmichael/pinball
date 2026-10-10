@@ -136,6 +136,13 @@ pub fn draw(table: &Table, status: &str, message: Option<&str>, lamps: &BTreeMap
         for s in layout.spinners.iter().filter(|s| s.layer == layer) {
             polyline(&view, &[s.a, s.b], false, view.px(0.003), Color::from_rgba(230, 230, 240, 220));
         }
+        for (i, f) in layout.flaps.iter().enumerate().filter(|(_, f)| f.layer == layer) {
+            let pose = table.flap_pose(i);
+            let ends = [pose * PVec::ZERO, pose * PVec::new(f.length, 0.0)];
+            polyline(&view, &ends, false, view.px(0.004), Color::from_rgba(255, 160, 0, 255));
+            let pivot = view.p(f.pivot);
+            draw_circle(pivot.x, pivot.y, view.px(0.003), Color::from_rgba(255, 160, 0, 255));
+        }
         for f in table.flippers.iter().filter(|f| f.def.layer == layer) {
             let pose = table.flipper_pose(f);
             let pts: Vec<Vec2> = f.outline.iter().map(|&p| view.p(pose * p)).collect();

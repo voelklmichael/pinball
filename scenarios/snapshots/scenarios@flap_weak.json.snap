@@ -1,0 +1,14 @@
+---
+source: scenario/tests/scenarios.rs
+description: "A weak shot pushes the flap partly open but doesn't get through, and rolls back down the lane."
+input_file: scenarios/flap_weak.json
+---
+  0.000  serve ball#1 at (0.470, 0.500)
+  0.140  touch ball#1 flap
+  0.354  leave ball#1 flap
+  0.971  touch ball#1 box
+  0.975  leave ball#1 box
+  1.369  touch ball#1 box
+  1.385  leave ball#1 box
+  1.477  touch ball#1 box
+    end  ball#1 at (0.480, 0.013) v=(0.00, 0.00) on playfield

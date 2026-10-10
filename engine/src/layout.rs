@@ -175,6 +175,31 @@ pub struct Spinner {
     pub spins_per_mps: f32,
 }
 
+/// Hinged gate (the wire gate at the top of a shooter lane): a bar that balls
+/// push open from one side and that swings back closed. From the other side it
+/// rests against its stop and blocks like a wall.
+pub struct Flap {
+    pub id: Option<String>,
+    pub layer: Layer,
+    pub pivot: Vector,
+    pub length: f32,
+    /// World angles (radians, counter-clockwise from +x) when closed and
+    /// fully open. It opens by turning from `closed` toward `open`, the short
+    /// way round.
+    pub closed: f32,
+    pub open: f32,
+    pub restitution: f32,
+    pub friction: f32,
+}
+
+impl Flap {
+    /// Turn from closed to fully open, in (-π, π]: positive opens counter-clockwise.
+    pub fn sweep(&self) -> f32 {
+        let s = (self.open - self.closed).rem_euclid(std::f32::consts::TAU);
+        if s > std::f32::consts::PI { s - std::f32::consts::TAU } else { s }
+    }
+}
+
 impl Transition {
     /// True if `p` is on the `target` side of the line.
     pub fn beyond(&self, p: Vector) -> bool {
@@ -242,6 +267,7 @@ pub struct Layout {
     pub drop_targets: Vec<DropTarget>,
     pub holes: Vec<Hole>,
     pub spinners: Vec<Spinner>,
+    pub flaps: Vec<Flap>,
 }
 
 impl Layout {

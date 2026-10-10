@@ -152,3 +152,63 @@ fn table_file_errors_name_the_problem() {
     let e = err(&base(r#"{"type": "line", "id": "playfield", "from": [0, 0], "to": [0, 1]}"#));
     assert!(e.contains(r#"id "playfield" is used twice"#), "{e}");
 }
+
+const BENCH_FLAP: &str = include_str!("../../tables/bench_flap.json");
+
+/// Runs a ball from `pos` at `vel` on the flap bench. After every step: the
+/// flap's angle from closed (degrees, positive is open) and the ball's height
+/// (`None` once it's gone).
+fn flap_run(pos: Vector, vel: Vector, secs: f32) -> Vec<(f32, Option<f32>)> {
+    let mut table = Table::new(crate::tablefile::parse(BENCH_FLAP).unwrap());
+    table.add_ball(pos, vel);
+    let closed = table.layout.flaps[0].closed;
+    (0..(secs * PHYSICS_HZ) as usize)
+        .map(|_| {
+            table.step();
+            let angle = (table.flap_pose(0).rotation.angle() - closed).to_degrees();
+            (angle, table.balls.first().map(|b| table.ball_pos(b).y))
+        })
+        .collect()
+}
+
+#[test]
+fn flap_opens_for_a_ball_and_closes_behind_it() {
+    let run = flap_run(Vector::new(0.47, 0.30), Vector::new(0.0, 3.0), 1.5);
+    let (widest, max) = run.iter().enumerate().fold((0, 0.0f32), |m, (i, &(a, _))| if a > m.1 { (i, a) } else { m });
+    assert!(max > 45.0, "flap only opened to {max:.1}°");
+    let shut = run[widest..].iter().position(|&(a, _)| a < 1.0).expect("flap never closed");
+    assert!((shut as f32 / PHYSICS_HZ) < 0.4, "flap took {:.2}s to close", shut as f32 / PHYSICS_HZ);
+    // The ball came back down onto the closed flap and stays above it.
+    let (end_angle, end_y) = *run.last().unwrap();
+    assert!(end_angle.abs() < 1.0 && end_y.unwrap() > 0.6, "end: flap {end_angle:.1}°, ball y {end_y:?}");
+}
+
+#[test]
+fn flap_holds_from_behind() {
+    for (pos, vel) in [
+        (Vector::new(0.47, 0.80), Vector::ZERO),
+        (Vector::new(0.47, 0.80), Vector::new(0.0, -3.0)),
+        (Vector::new(0.50, 0.80), Vector::new(0.0, -6.0)),
+        (Vector::new(0.435, 0.80), Vector::new(0.0, -6.0)),
+    ] {
+        let run = flap_run(pos, vel, 1.0);
+        let lowest = run.iter().filter_map(|r| r.1).fold(f32::MAX, f32::min);
+        let worst = run.iter().map(|r| r.0.abs()).fold(0.0, f32::max);
+        assert!(lowest > 0.6, "ball from {pos} at {vel} got through: y {lowest:.3}");
+        assert!(worst < 1.0, "ball from {pos} at {vel} moved the flap {worst:.1}°");
+    }
+}
+
+#[test]
+fn flap_errors_name_the_problem() {
+    let err = |angles: &str| {
+        let json = BENCH_FLAP.replace(r#""closed_deg": 0, "open_deg": 80"#, angles);
+        crate::tablefile::parse(&json).err().expect("should fail")
+    };
+    let e = err(r#""closed_deg": 0, "open_deg": 180"#);
+    assert!(e.contains("elements[2] (flap): open_deg must be 1 to 179 degrees away from closed_deg"), "{e}");
+    let e = err(r#""closed_deg": 10, "open_deg": 370"#);
+    assert!(e.contains("open_deg must be"), "{e}");
+    let e = err(r#""closed_deg": 0, "open_deg": 80, "spring": 3"#);
+    assert!(e.contains("unknown field `spring`"), "{e}");
+}

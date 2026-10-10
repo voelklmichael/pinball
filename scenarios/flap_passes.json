@@ -1,0 +1,12 @@
+{
+  "description": "A ball shot up the lane pushes the flap open, passes, and can't get back: the flap has closed behind it and holds it.",
+  "table": "../tables/bench_flap.json",
+  "duration": 2.0,
+  "serve": false,
+  "balls": [{ "position": [0.47, 0.30], "velocity": [0.0, 3.0] }],
+  "expect": [
+    {"sequence": ["touch flap", "leave flap", "touch flap"]},
+    {"enters": {"min": [0.42, 0.70], "max": [0.52, 1.0]}, "between": [0.0, 0.5]},
+    {"at_end": {"near": [0.47, 0.6165], "within": 0.01, "max_speed": 0.01}}
+  ]
+}

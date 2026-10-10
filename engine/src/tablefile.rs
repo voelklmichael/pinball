@@ -14,7 +14,7 @@ use rapier2d::math::Vector;
 use serde::Deserialize;
 
 use crate::layout::{
-    BallDef, Button, DropTarget, FlipperDef, Hole, Launcher, Layer, LayerDef, Layout, Ramp, SensorShape, Spinner, Switch,
+    BallDef, Button, DropTarget, Flap, FlipperDef, Hole, Launcher, Layer, LayerDef, Layout, Ramp, SensorShape, Spinner, Switch,
     Transition, Wall,
 };
 
@@ -167,6 +167,7 @@ pub enum Element {
     DropTarget(DropTargetSpec),
     Hole(HoleSpec),
     Spinner(SpinnerSpec),
+    Flap(FlapSpec),
 }
 
 /// The curves a flipper outline is made of: walls without id or physics settings.
@@ -406,6 +407,21 @@ fn default_spins_per_mps() -> f32 {
     8.0
 }
 
+/// Hinged gate: a bar from `pivot`, `length` long, that balls push open from
+/// one side (turning it from `closed_deg` toward `open_deg`) and that swings
+/// back closed. From the other side it blocks.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FlapSpec {
+    pub id: Option<String>,
+    pub pivot: P,
+    pub length: f32,
+    pub closed_deg: f32,
+    pub open_deg: f32,
+    pub restitution: Option<f32>,
+    pub friction: Option<f32>,
+}
+
 #[derive(Deserialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum Key {
@@ -484,6 +500,7 @@ impl Element {
             Element::DropTarget(_) => "drop_target",
             Element::Hole(_) => "hole",
             Element::Spinner(_) => "spinner",
+            Element::Flap(_) => "flap",
             _ => self.wall().unwrap().kind(),
         }
     }
@@ -496,6 +513,7 @@ impl Element {
             Element::DropTarget(d) => d.id.as_deref(),
             Element::Hole(h) => h.id.as_deref(),
             Element::Spinner(s) => s.id.as_deref(),
+            Element::Flap(f) => f.id.as_deref(),
             _ => self.wall().unwrap().props().id,
         }
     }
@@ -512,7 +530,8 @@ impl Element {
             | Element::Transition(_)
             | Element::DropTarget(_)
             | Element::Hole(_)
-            | Element::Spinner(_) => None,
+            | Element::Spinner(_)
+            | Element::Flap(_) => None,
         }
     }
 }
@@ -701,6 +720,7 @@ impl TableFile {
         let mut drop_targets = Vec::new();
         let mut holes = Vec::new();
         let mut spinners = Vec::new();
+        let mut flaps = Vec::new();
         // Layer and element ids share one namespace.
         let mut ids = std::collections::HashSet::new();
         let mut claim = |id: &str| -> Result<(), String> {
@@ -847,6 +867,29 @@ impl TableFile {
                             spins_per_mps: sp.spins_per_mps,
                         });
                     }
+                    Element::Flap(f) => {
+                        check(f.length > 0.0, || "length must be > 0".into()).map_err(ctx)?;
+                        let (restitution, friction) =
+                            wall_defaults(&Props { restitution: f.restitution, friction: f.friction, ..Props::default() });
+                        check_coefficient("restitution", restitution).map_err(ctx)?;
+                        check(friction >= 0.0, || "friction must be >= 0".into()).map_err(ctx)?;
+                        let flap = Flap {
+                            id,
+                            layer,
+                            pivot: v(f.pivot),
+                            length: f.length,
+                            closed: f.closed_deg.to_radians(),
+                            open: f.open_deg.to_radians(),
+                            restitution,
+                            friction,
+                        };
+                        let sweep = flap.sweep().to_degrees().abs();
+                        check((1.0..=179.0).contains(&sweep), || {
+                            "open_deg must be 1 to 179 degrees away from closed_deg".into()
+                        })
+                        .map_err(ctx)?;
+                        flaps.push(flap);
+                    }
                     _ => {
                         let wall = el.wall().unwrap();
                         let props = wall.props();
@@ -898,6 +941,7 @@ impl TableFile {
             drop_targets,
             holes,
             spinners,
+            flaps,
         })
     }
 }
